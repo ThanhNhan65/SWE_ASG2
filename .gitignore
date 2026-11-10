@@ -36,3 +36,11 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Agent configuration
+AGENTS.md
+**/AGENTS.md
+agy-resume.bat
+agy-resume.ps1
+**/agy-resume.*
+

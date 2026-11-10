@@ -1,0 +1,84 @@
+@startuml layered-architecture-3tier
+title BrewLite - Kiến trúc Phân lớp (3-Tier Layered Architecture)
+skinparam componentStyle uml2
+skinparam shadowing false
+skinparam packageStyle rectangle
+left to right direction
+
+actor "Khách hàng" as Customer
+
+package "apps/web - Next.js (PWA)" as WEB {
+  package "UI Layer" as WUI {
+    [Pages / Components] as WPage
+  }
+  package "State & Logic Layer" as WLOGIC {
+    [Hooks / Cart Store] as WState
+  }
+  package "Data Access Layer" as WDATA {
+    [API Client (fetch)] as WApi
+  }
+}
+
+package "apps/api - NestJS" as API {
+  package "L1 - Presentation Layer" as L1 {
+    [Controllers] as Ctl
+    [JwtAuthGuard / ValidationPipe (DTO)] as Cross
+  }
+
+  package "L2 - Business Logic Layer" as L2 {
+    [OrdersService\n(OrderStateMachine)] as OrdSvc
+    [PaymentsService] as PaySvc
+    [AuthService] as AuthSvc
+    [ProductsService] as ProdSvc
+    [PromotionsService &\nLoyaltyService] as PromoSvc
+    interface "PaymentStrategy" as IStrat
+    [WalletPaymentStrategy] as ZlpStrat
+    [CardPaymentStrategy] as VnpStrat
+  }
+
+  package "L3 - Data Access & Integration Layer" as L3 {
+    [PrismaService (ORM)] as Prisma
+    [Config / Logger / Health] as Infra
+  }
+}
+
+database "PostgreSQL\n(brewlite_db)" as DB
+
+cloud "VNPay Sandbox\n(thẻ)" as VNPAY
+cloud "ZaloPay Sandbox\n(ví điện tử)" as ZALO
+
+' Luồng Frontend
+Customer --> WPage
+WPage --> WState
+WState --> WApi
+WApi --> Ctl : HTTPS / REST + JWT
+
+' Luồng L1 -> L2
+Cross ..> Ctl
+Ctl --> OrdSvc
+Ctl --> PaySvc
+Ctl --> AuthSvc
+Ctl --> ProdSvc
+Ctl --> PromoSvc
+
+' Luồng nội bộ L2 (Strategy Pattern)
+PaySvc --> IStrat
+ZlpStrat ..|> IStrat
+VnpStrat ..|> IStrat
+
+' Luồng L2 -> L3
+OrdSvc --> Prisma
+PaySvc --> Prisma
+AuthSvc --> Prisma
+ProdSvc --> Prisma
+PromoSvc --> Prisma
+PaySvc ..> Infra
+
+' Luồng ra ngoài hệ thống
+Prisma --> DB : SQL ($transaction)
+VnpStrat --> VNPAY : HTTPS
+ZlpStrat --> ZALO : HTTPS
+VNPAY ..> Ctl : Return / IPN
+ZALO ..> Ctl : Return / Callback
+
+@enduml
