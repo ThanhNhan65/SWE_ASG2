@@ -1,0 +1,199 @@
+﻿import { PrismaClient, DiscountType } from '@prisma/client';
+import bcrypt from 'bcryptjs';
+
+const prisma = new PrismaClient();
+
+async function main(): Promise<void> {
+  console.log('Seeding BrewLite initial data...');
+
+  // 1. Seed 5 món đồ uống mẫu
+  const products = [
+    {
+      name: 'Cà phê sữa đá',
+      description: 'Cà phê Robusta đậm đà kết hợp sữa đặc ngọt béo truyền thống.',
+      price: 35000,
+      imageUrl: 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?w=500&auto=format&fit=crop&q=60',
+      stock: 50,
+      isAvailable: true,
+    },
+    {
+      name: 'Americano',
+      description: 'Espresso nguyên chất pha loãng với nước ấm/đá, hương vị thanh tao.',
+      price: 40000,
+      imageUrl: 'https://images.unsplash.com/photo-1551030173-122aabc4489c?w=500&auto=format&fit=crop&q=60',
+      stock: 50,
+      isAvailable: true,
+    },
+    {
+      name: 'Cappuccino',
+      description: 'Sự kết hợp hoàn hảo giữa Espresso, sữa nóng và lớp bọt sữa mịn màng.',
+      price: 45000,
+      imageUrl: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=500&auto=format&fit=crop&q=60',
+      stock: 40,
+      isAvailable: true,
+    },
+    {
+      name: 'Trà đào cam sả',
+      description: 'Trà thảo mộc thơm mát kết hợp vị ngọt thanh của đào và hương cam sả sảng khoái.',
+      price: 39000,
+      imageUrl: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=500&auto=format&fit=crop&q=60',
+      stock: 60,
+      isAvailable: true,
+    },
+    {
+      name: 'Trà sữa Oolong nướng',
+      description: 'Trà Oolong đậm vị trà hòa quyện cùng vị sữa béo ngậy đặc trưng.',
+      price: 42000,
+      imageUrl: 'https://images.unsplash.com/photo-1525385133512-2f3bdd039054?w=500&auto=format&fit=crop&q=60',
+      stock: 35,
+      isAvailable: true,
+    },
+  ];
+
+  for (const p of products) {
+    const existing = await prisma.product.findFirst({ where: { name: p.name } });
+    if (!existing) {
+      await prisma.product.create({ data: p });
+    } else {
+      await prisma.product.update({
+        where: { id: existing.id },
+        data: {
+          price: p.price,
+          stock: p.stock,
+          isAvailable: p.isAvailable,
+          imageUrl: p.imageUrl,
+          description: p.description,
+        },
+      });
+    }
+  }
+
+  // 2. Seed 4 loại Topping (có 1 món hết hàng để test edge case)
+  const toppings = [
+    { name: 'Trân châu đen', price: 10000, stock: 15, isAvailable: true },
+    { name: 'Trân châu trắng', price: 10000, stock: 0, isAvailable: false },
+    { name: 'Kem Cheese', price: 12000, stock: 8, isAvailable: true },
+    { name: 'Thạch nha đam', price: 8000, stock: 20, isAvailable: true },
+  ];
+
+  for (const t of toppings) {
+    const existing = await prisma.topping.findFirst({ where: { name: t.name } });
+    if (!existing) {
+      await prisma.topping.create({ data: t });
+    } else {
+      await prisma.topping.update({
+        where: { id: existing.id },
+        data: {
+          price: t.price,
+          stock: t.stock,
+          isAvailable: t.isAvailable,
+        },
+      });
+    }
+  }
+
+  // 3. Seed kho nguyên liệu pha chế
+  const ingredients = [
+    { code: 'SUGAR', name: 'Đường cát tinh luyện', stock: 20000, unit: 'g', minThreshold: 1000 },
+    { code: 'ICE', name: 'Đá viên tinh khiết', stock: 50000, unit: 'g', minThreshold: 2000 },
+    { code: 'COFFEE_BEANS', name: 'Hạt cà phê Robusta rang mộc', stock: 5000, unit: 'g', minThreshold: 500 },
+    { code: 'TEA_LEAVES', name: 'Lá trà Oolong & Trà đen khô', stock: 3000, unit: 'g', minThreshold: 300 },
+    { code: 'MILK', name: 'Sữa tươi & Sữa đặc pha chế', stock: 10000, unit: 'ml', minThreshold: 1000 },
+  ];
+
+  for (const ing of ingredients) {
+    const existing = await prisma.ingredient.findUnique({ where: { code: ing.code } });
+    if (!existing) {
+      await prisma.ingredient.create({ data: ing });
+    } else {
+      await prisma.ingredient.update({
+        where: { id: existing.id },
+        data: {
+          name: ing.name,
+          stock: ing.stock,
+          unit: ing.unit,
+          minThreshold: ing.minThreshold,
+        },
+      });
+    }
+  }
+
+  // 4. Seed mã khuyến mãi (Percentage & Fixed)
+  const promotions = [
+    {
+      code: 'BREWLITE20',
+      discountType: DiscountType.PERCENTAGE,
+      discountValue: 20,
+      minOrderValue: 50000,
+      maxDiscount: 30000,
+      usageLimit: 100,
+      isActive: true,
+      expiredAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    },
+    {
+      code: 'GIAM10K',
+      discountType: DiscountType.FIXED,
+      discountValue: 10000,
+      minOrderValue: 40000,
+      maxDiscount: 10000,
+      usageLimit: 50,
+      isActive: true,
+      expiredAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    },
+  ];
+
+  for (const promo of promotions) {
+    const existing = await prisma.promotion.findUnique({ where: { code: promo.code } });
+    if (!existing) {
+      await prisma.promotion.create({ data: promo });
+    }
+  }
+
+  // 5. Seed tài khoản khách hàng mẫu (mật khẩu: 123456)
+  const demoEmail = 'customer@brewlite.vn';
+  const realPasswordHash = await bcrypt.hash('123456', 10);
+  await prisma.user.upsert({
+    where: { email: demoEmail },
+    update: { passwordHash: realPasswordHash },
+    create: {
+      email: demoEmail,
+      fullName: 'Khách hàng Thử Nghiệm',
+      passwordHash: realPasswordHash,
+      loyaltyPoints: 100,
+    },
+  });
+
+  // 6. Seed đơn hàng mẫu #1 ở trạng thái PENDING & đồng bộ sequence ID
+  const existingOrder = await prisma.order.findUnique({ where: { id: 1 } });
+  if (!existingOrder) {
+    const demoUser = await prisma.user.findUnique({ where: { email: demoEmail } });
+    if (demoUser) {
+      await prisma.order.create({
+        data: {
+          id: 1,
+          userId: demoUser.id,
+          status: 'PENDING',
+          subtotal: 123000,
+          discountAmount: 0,
+          total: 123000,
+          pointsEarned: 10,
+        },
+      });
+    }
+  }
+
+  await prisma.$executeRawUnsafe(
+    `SELECT setval(pg_get_serial_sequence('orders', 'id'), COALESCE((SELECT MAX(id) FROM orders), 1));`,
+  );
+
+  console.log('Seeding completed successfully!');
+}
+
+main()
+  .catch((e: unknown) => {
+    console.error('Seed error:', e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
