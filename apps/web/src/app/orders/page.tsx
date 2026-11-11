@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Clock, Coffee, RefreshCw, ShoppingBag, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Clock, Coffee, RefreshCw, RotateCcw, ShoppingBag, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { getAuthToken, getStoredUser } from '@/lib/auth';
 
 export interface OrderItem {
@@ -259,9 +259,20 @@ export default function OrdersPage() {
 
                   <div className="pt-2 border-t border-stone-100 flex items-center justify-between">
                     <span className="text-xs text-stone-500">Tổng thanh toán</span>
-                    <span className="font-bold text-base text-amber-900">
-                      {((order.totalAmount ?? order.total) || 0).toLocaleString('vi-VN')} đ
-                    </span>
+                    <div className="flex items-center gap-2.5">
+                      {(order.status === 'PAYMENT_FAILED' || order.status === 'PENDING') && (
+                        <Link
+                          href={`/checkout?orderCode=${encodeURIComponent(order.orderCode)}&amount=${(order.totalAmount ?? order.total) || 0}`}
+                          className="inline-flex items-center gap-1 text-xs font-semibold bg-amber-700 hover:bg-amber-800 text-white px-3 py-1.5 rounded-lg transition shadow-sm"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          Thanh toán lại
+                        </Link>
+                      )}
+                      <span className="font-bold text-base text-amber-900">
+                        {((order.totalAmount ?? order.total) || 0).toLocaleString('vi-VN')} đ
+                      </span>
+                    </div>
                   </div>
                 </div>
               );
