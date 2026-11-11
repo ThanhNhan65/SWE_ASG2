@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { PromotionsController } from './promotions.controller';
-import { PromotionsService } from './promotions.service';
-import { LoyaltyService } from './loyalty.service';
-import { FixedDiscountStrategy } from './strategies/fixed-discount.strategy';
-import { PercentageDiscountStrategy } from './strategies/percentage-discount.strategy';
-import { PrismaModule } from '../prisma/prisma.module';
+import { PromotionsController } from './promotions.controller.js';
+import { PromotionsService } from './promotions.service.js';
+import { LoyaltyService } from './loyalty.service.js';
+import { FixedDiscountStrategy } from './strategies/fixed-discount.strategy.js';
+import { PercentageDiscountStrategy } from './strategies/percentage-discount.strategy.js';
+import { PrismaModule } from '../prisma/prisma.module.js';
 
 @Module({
   imports: [PrismaModule],

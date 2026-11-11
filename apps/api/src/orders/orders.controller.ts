@@ -8,9 +8,9 @@ import {
   UseGuards,
   Request,
 } from '@nestjs/common';
-import { OrdersService } from './orders.service';
-import { OrderStatus } from './order-state-machine';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OrdersService } from './orders.service.js';
+import { OrderStatus } from './order-state-machine.js';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 
 @Controller('orders')
 export class OrdersController {
