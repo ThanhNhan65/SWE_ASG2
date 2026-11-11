@@ -1,34 +1,100 @@
 name: BrewLite CI Pipeline
 
+# ==============================================================================
+# Task 4.7: Thiết lập CI chạy theo Pull Request
+# Quy trình chuẩn: Install -> Lint -> Unit Test -> Build
+# Người phụ trách: Đặng Hoàng Nam (TV6)
+# ==============================================================================
+
 on:
   push:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch: # Cho phép trigger thủ công từ tab Actions để kiểm thử
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  lint-test-build:
-    name: Install -> Lint -> Test -> Build
+  ci-pipeline:
+    name: "CI: Install -> Lint -> Unit Test -> Build"
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      # Bước chuẩn bị mã nguồn
+      - name: "Step 0: Checkout Repository"
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      # Cài đặt môi trường Node.js 20
+      - name: "Step 0: Setup Node.js 20"
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci || npm install
+      # Giai đoạn 1: Install Dependencies
+      - name: "Step 1 [Install]: Cài đặt Dependencies & Generate Prisma Client"
+        run: |
+          echo "=========================================="
+          echo "1. INSTALL DEPENDENCIES"
+          echo "=========================================="
+          echo "--> Cài đặt Root dependencies..."
+          npm install --prefer-offline --no-audit || npm install
+          
+          echo "--> Cài đặt Backend dependencies (apps/api)..."
+          if [ -d "apps/api" ]; then
+            npm --prefix apps/api install --prefer-offline --no-audit || npm --prefix apps/api install
+            echo "--> Sinh mã Prisma Client..."
+            npx --prefix apps/api prisma generate
+          fi
 
-      - name: Run Linter
-        run: npm run lint --if-present
+          echo "--> Cài đặt Frontend dependencies (apps/web)..."
+          if [ -d "apps/web" ]; then
+            npm --prefix apps/web install --prefer-offline --no-audit || npm --prefix apps/web install
+          fi
 
-      - name: Run Unit Tests
-        run: npm test --if-present
+      # Giai đoạn 2: Lint
+      - name: "Step 2 [Lint]: Kiểm tra cú pháp và quy chuẩn mã nguồn (Linter)"
+        run: |
+          echo "=========================================="
+          echo "2. LINT CODEBASE"
+          echo "=========================================="
+          if npm run lint --if-present; then
+            echo "Linting thành công!"
+          else
+            echo "Linter phát hiện lỗi cú pháp hoặc quy chuẩn code!"
+            exit 1
+          fi
 
-      - name: Build applications
-        run: npm run build --if-present
+      # Giai đoạn 3: Unit Test
+      - name: "Step 3 [Unit Test]: Chạy kiểm thử đơn vị logic nghiệp vụ (Unit Tests)"
+        run: |
+          echo "=========================================="
+          echo "3. RUN UNIT TESTS"
+          echo "=========================================="
+          if [ -d "apps/api" ]; then
+            echo "--> Chạy Unit Tests Backend (Vitest)..."
+            npm --prefix apps/api run test
+          else
+            npm test --if-present
+          fi
+
+      # Giai đoạn 4: Build
+      - name: "Step 4 [Build]: Biên dịch Backend & Frontend (Build Applications)"
+        run: |
+          echo "=========================================="
+          echo "4. BUILD APPLICATIONS"
+          echo "=========================================="
+          if [ -d "apps/api" ]; then
+            echo "--> Build Backend NestJS API..."
+            npm --prefix apps/api run build
+          fi
+
+          if [ -d "apps/web" ]; then
+            echo "--> Build Frontend Next.js Web..."
+            npm --prefix apps/web run build
+          fi
+          echo "Build toàn bộ ứng dụng thành công!"
