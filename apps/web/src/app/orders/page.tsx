@@ -98,42 +98,6 @@ export default function OrdersPage() {
     }
   }, [fetchOrders]);
 
-  const updateOrderStatus = useCallback(async (orderCode: string, nextStatus: string) => {
-    const token = getAuthToken();
-    try {
-      const res = await fetch(`${apiUrl}/orders/${orderCode}/status`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ status: nextStatus }),
-      });
-      if (res.ok) {
-        fetchOrders(true);
-      }
-    } catch {
-    }
-  }, [apiUrl, fetchOrders]);
-
-  useEffect(() => {
-    const activePaidOrder = orders.find((o) => o.status === 'PAID');
-    if (activePaidOrder) {
-      const timer = setTimeout(() => {
-        updateOrderStatus(activePaidOrder.orderCode, 'PREPARING');
-      }, 10000);
-      return () => clearTimeout(timer);
-    }
-
-    const activePreparingOrder = orders.find((o) => o.status === 'PREPARING');
-    if (activePreparingOrder) {
-      const timer = setTimeout(() => {
-        updateOrderStatus(activePreparingOrder.orderCode, 'READY');
-      }, 15000);
-      return () => clearTimeout(timer);
-    }
-  }, [orders, updateOrderStatus]);
-
   if (!isMounted) {
     return (
       <div className="min-h-screen bg-stone-50 flex items-center justify-center">
@@ -232,10 +196,9 @@ export default function OrdersPage() {
                     <div className="bg-amber-50/60 p-3 rounded-xl border border-amber-100 space-y-2">
                       <div className="flex items-center justify-between text-xs font-semibold text-amber-950">
                         <span className="flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5 text-amber-700 animate-pulse" />
+                          <Clock className="w-3.5 h-3.5 text-amber-700" />
                           Tiến trình pha chế
                         </span>
-                        <span className="text-[11px] text-amber-700 font-normal">Tự động cập nhật</span>
                       </div>
                       <div className="grid grid-cols-4 gap-1.5 text-center">
                         {TIMELINE_STEPS.map((st, idx) => {
@@ -300,15 +263,6 @@ export default function OrdersPage() {
                       {((order.totalAmount ?? order.total) || 0).toLocaleString('vi-VN')} đ
                     </span>
                   </div>
-
-                  {order.status === 'READY' && (
-                    <button
-                      onClick={() => updateOrderStatus(order.orderCode, 'COMPLETED')}
-                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-xl text-xs transition active:scale-95 shadow-sm"
-                    >
-                      Đã nhận đồ uống (Hoàn tất)
-                    </button>
-                  )}
                 </div>
               );
             })}
