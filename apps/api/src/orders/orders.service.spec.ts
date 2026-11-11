@@ -14,8 +14,8 @@ describe('OrdersService, StateMachine & Concurrency (Task 5.4 & Task 10)', () =>
 
     mockPrisma = {
       user: {
-        findFirst: vi.fn(),
-        findUnique: vi.fn(),
+        findFirst: vi.fn().mockResolvedValue({ id: 1, email: 'customer@brewlite.vn', fullName: 'Demo User' }),
+        findUnique: vi.fn().mockResolvedValue({ id: 1, email: 'customer@brewlite.vn', fullName: 'Demo User' }),
       },
       product: {
         findMany: vi.fn(),
@@ -75,8 +75,18 @@ describe('OrdersService, StateMachine & Concurrency (Task 5.4 & Task 10)', () =>
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('chặn lỗi khi tài khoản người dùng không tồn tại', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        ordersService.createOrder({
+          userId: 999,
+          items: [{ productId: 1, quantity: 1, size: ProductSize.M }],
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
     it('chặn lỗi khi sản phẩm không tồn tại trong CSDL', async () => {
-      mockPrisma.user.findFirst.mockResolvedValue({ id: 1 });
       mockPrisma.product.findMany.mockResolvedValue([]);
 
       await expect(
@@ -88,7 +98,6 @@ describe('OrdersService, StateMachine & Concurrency (Task 5.4 & Task 10)', () =>
     });
 
     it('chặn lỗi khi sản phẩm tạm ngưng phục vụ (isAvailable = false)', async () => {
-      mockPrisma.user.findFirst.mockResolvedValue({ id: 1 });
       mockPrisma.product.findMany.mockResolvedValue([
         { id: 1, name: 'Cà phê sữa', price: 35000, stock: 10, isAvailable: false },
       ]);
@@ -102,7 +111,6 @@ describe('OrdersService, StateMachine & Concurrency (Task 5.4 & Task 10)', () =>
     });
 
     it('chặn lỗi khi số lượng đặt vượt quá tồn kho món', async () => {
-      mockPrisma.user.findFirst.mockResolvedValue({ id: 1 });
       mockPrisma.product.findMany.mockResolvedValue([
         { id: 1, name: 'Cà phê sữa', price: 35000, stock: 2, isAvailable: true },
       ]);
@@ -116,7 +124,6 @@ describe('OrdersService, StateMachine & Concurrency (Task 5.4 & Task 10)', () =>
     });
 
     it('tạo đơn hàng thành công, tính đúng tiền, trừ tồn kho và trạng thái PENDING', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: 1, email: 'test@brewlite.vn' });
       mockPrisma.product.findMany.mockResolvedValue([
         { id: 1, name: 'Cà phê sữa', price: 35000, stock: 20, isAvailable: true },
       ]);
@@ -152,7 +159,6 @@ describe('OrdersService, StateMachine & Concurrency (Task 5.4 & Task 10)', () =>
     });
 
     it('áp dụng mã khuyến mãi thành công và tính đúng tiền giảm giá', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: 1, email: 'test@brewlite.vn' });
       mockPrisma.product.findMany.mockResolvedValue([
         { id: 1, name: 'Americano', price: 40000, stock: 50, isAvailable: true },
       ]);

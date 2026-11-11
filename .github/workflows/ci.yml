@@ -44,7 +44,7 @@ jobs:
             echo "--> Cài đặt dependencies cho Backend (apps/api)..."
             npm --prefix apps/api install --prefer-offline --no-audit || npm --prefix apps/api install
             echo "--> Sinh mã Prisma Client..."
-            npx --prefix apps/api prisma generate
+            npx --prefix apps/api prisma generate --schema=apps/api/prisma/schema.prisma
           fi
 
           if [ -d "apps/web" ]; then
