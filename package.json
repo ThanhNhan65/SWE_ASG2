@@ -3,9 +3,6 @@
   "version": "1.0.0",
   "description": "BrewLite - Coffee Ordering System (Assignment 2)",
   "private": true,
-  "workspaces": [
-    "apps/*"
-  ],
   "scripts": {
     "dev": "npm run dev:api & npm run dev:web",
     "dev:api": "npm --prefix apps/api run start:dev",
@@ -13,8 +10,11 @@
     "build": "npm --prefix apps/api run build && npm --prefix apps/web run build",
     "test": "npm --prefix apps/api run test",
     "lint": "npm --prefix apps/api run lint && npm --prefix apps/web run lint",
+    "db:push": "npm --prefix apps/api run db:push",
+    "db:seed": "npm --prefix apps/api run db:seed",
     "prisma:generate": "npm --prefix apps/api run prisma:generate",
-    "prisma:seed": "npm --prefix apps/api run prisma:seed"
+    "prisma:seed": "npm --prefix apps/api run prisma:seed",
+    "prisma:studio": "npm --prefix apps/api exec prisma studio"
   },
   "keywords": [
     "brewlite",
