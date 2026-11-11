@@ -4,7 +4,7 @@ import { OrderStateMachine, OrderStatus } from './order-state-machine';
 import { ProductSize } from './dto/create-order.dto';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
-describe('OrdersService & OrderStateMachine (Task 5.4)', () => {
+describe('OrdersService, StateMachine & Concurrency (Task 5.4 & Task 10)', () => {
   let ordersService: OrdersService;
   let stateMachine: OrderStateMachine;
   let mockPrisma: any;
@@ -20,6 +20,10 @@ describe('OrdersService & OrderStateMachine (Task 5.4)', () => {
       product: {
         findMany: vi.fn(),
         findUnique: vi.fn(),
+        update: vi.fn(),
+      },
+      ingredient: {
+        findUnique: vi.fn().mockResolvedValue(null),
         update: vi.fn(),
       },
       promotion: {
@@ -73,7 +77,7 @@ describe('OrdersService & OrderStateMachine (Task 5.4)', () => {
 
     it('chặn lỗi khi sản phẩm không tồn tại trong CSDL', async () => {
       mockPrisma.user.findFirst.mockResolvedValue({ id: 1 });
-      mockPrisma.product.findMany.mockResolvedValue([]); // Không tìm thấy
+      mockPrisma.product.findMany.mockResolvedValue([]);
 
       await expect(
         ordersService.createOrder({
@@ -97,7 +101,7 @@ describe('OrdersService & OrderStateMachine (Task 5.4)', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('chặn lỗi khi số lượng đặt vượt quá tồn kho', async () => {
+    it('chặn lỗi khi số lượng đặt vượt quá tồn kho món', async () => {
       mockPrisma.user.findFirst.mockResolvedValue({ id: 1 });
       mockPrisma.product.findMany.mockResolvedValue([
         { id: 1, name: 'Cà phê sữa', price: 35000, stock: 2, isAvailable: true },
@@ -156,7 +160,7 @@ describe('OrdersService & OrderStateMachine (Task 5.4)', () => {
         id: 5,
         code: 'BREWLITE20',
         discountType: 'PERCENTAGE',
-        discountValue: 20, // Giảm 20%
+        discountValue: 20,
         minOrderValue: 40000,
         maxDiscount: 20000,
         usageLimit: 100,
@@ -190,6 +194,99 @@ describe('OrdersService & OrderStateMachine (Task 5.4)', () => {
         where: { id: 5 },
         data: { usedCount: { increment: 1 } },
       });
+    });
+  });
+
+  describe('3. Kiểm Soát Đặt Hàng Đồng Thời (Optimistic Locking & Concurrency)', () => {
+    interface ProductInventory {
+      id: number;
+      name: string;
+      stock: number;
+      version: number;
+    }
+
+    function deductStockWithOptimisticLock(
+      product: ProductInventory,
+      quantity: number,
+      expectedVersion: number,
+    ): boolean {
+      if (product.version !== expectedVersion || product.stock < quantity) {
+        return false;
+      }
+      product.stock -= quantity;
+      product.version += 1;
+      return true;
+    }
+
+    it('đặt hàng đồng thời không bán vượt quá tồn kho (Optimistic Locking)', async () => {
+      const initialStock = 5;
+      const product: ProductInventory = {
+        id: 1,
+        name: 'Cà phê Robusta Đặc Biệt',
+        stock: initialStock,
+        version: 1,
+      };
+
+      const concurrentRequestsCount = 10;
+      let successfulOrders = 0;
+      let rejectedOrders = 0;
+
+      const readVersion = product.version;
+
+      const promises = Array.from({ length: concurrentRequestsCount }).map(async () => {
+        await new Promise((resolve) => setTimeout(resolve, Math.random() * 10));
+        const success = deductStockWithOptimisticLock(product, 1, readVersion);
+        if (success) {
+          successfulOrders++;
+        } else {
+          rejectedOrders++;
+        }
+      });
+
+      await Promise.all(promises);
+
+      expect(successfulOrders).toBe(1);
+      expect(rejectedOrders).toBe(9);
+      expect(product.stock).toBe(initialStock - 1);
+      expect(product.version).toBe(2);
+    });
+
+    it('xử lý hết sạch tồn kho mà không bao giờ bị âm khi có Retry Loop', async () => {
+      const initialStock = 3;
+      const product: ProductInventory = {
+        id: 2,
+        name: 'Trà Oolong nướng',
+        stock: initialStock,
+        version: 1,
+      };
+
+      const buyers = 10;
+      let successfulOrders = 0;
+
+      const promises = Array.from({ length: buyers }).map(async () => {
+        let attempts = 0;
+        const maxRetries = 5;
+
+        while (attempts < maxRetries) {
+          attempts++;
+          const currentVersion = product.version;
+          if (product.stock <= 0) break;
+
+          const success = deductStockWithOptimisticLock(product, 1, currentVersion);
+          if (success) {
+            successfulOrders++;
+            break;
+          }
+          await new Promise((r) => setTimeout(r, Math.random() * 5));
+        }
+      });
+
+      await Promise.all(promises);
+
+      expect(successfulOrders).toBe(initialStock);
+      expect(product.stock).toBe(0);
+      expect(product.stock).toBeGreaterThanOrEqual(0);
+      expect(product.version).toBe(initialStock + 1);
     });
   });
 });

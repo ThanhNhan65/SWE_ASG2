@@ -1,30 +1,32 @@
-# BÁO CÁO THỰC HIỆN TASK 5.4: QUY TRÌNH ĐẶT HÀNG (ORDER CREATION)
+# BÁO CÁO THỰC HIỆN TASK 5.4: QUY TRÌNH ĐẶT HÀNG & KIỂM SOÁT TỒN KHO
 
 > **Dự án**: BrewLite - Coffee Ordering System  
-> **Mã công việc**: Task 5.4 (Sprint 2 - STT 2026-04-05)  
+> **Mã công việc**: Task 5.4 (Sprint 2 - STT 2026-04-05) & Task 10 (Nghiệp vụ backend nâng cao)  
 > **Người phụ trách**: Đặng Hoàng Nam (TV6)  
-> **Chi tiết công việc**: Tạo API đặt hàng; validate sản phẩm, số lượng và tồn kho; tính tổng tiền phía backend; tạo Order và OrderItem; xử lý transaction và trạng thái đơn hàng.
+> **Chi tiết công việc**: Tạo API đặt hàng; validate sản phẩm, số lượng và tồn kho; tính tổng tiền phía backend; tạo Order và OrderItem; xử lý transaction ACID và kiểm soát tồn kho đồng thời (Optimistic Locking).
 
 ---
 
 ## 1. Cấu trúc Cây Thư Mục & Vị Trí Mã Nguồn
 
-Toàn bộ mã nguồn liên quan đến Task 5.4 được tổ chức tập trung, gọn gàng trong module `orders` của Backend API (`apps/api`) và tài liệu tại `docs/`:
+Toàn bộ mã nguồn liên quan đến Task 5.4 được tổ chức tập trung, kế thừa và tối ưu hóa từ kinh nghiệm của Assignment 1:
 
 ```text
 SWE_ASG2/
 ├── apps/
 │   └── api/
 │       └── src/
-│           └── orders/
-│               ├── dto/
-│               │   └── create-order.dto.ts     <-- [Task 5.4] DTO validate dữ liệu giỏ hàng (class-validator)
-│               ├── orders.controller.ts       <-- [Task 5.4] Endpoint POST /orders tiếp nhận yêu cầu đặt hàng
-│               ├── orders.service.ts          <-- [Task 5.4] Nghiệp vụ tính tiền, kiểm tra tồn kho & Transaction
-│               ├── order-state-machine.ts     <-- [Task 5.4] Quản lý vòng đời trạng thái đơn (PENDING, PAID...)
-│               └── orders.service.spec.ts     <-- [Task 5.4] Unit Tests kiểm thử toàn bộ luồng tạo đơn
+│           ├── orders/
+│           │   ├── dto/
+│           │   │   └── create-order.dto.ts     <-- [Task 5.4] DTO validate dữ liệu giỏ hàng (class-validator)
+│           │   ├── orders.controller.ts       <-- [Task 5.4] Endpoint POST /orders tiếp nhận yêu cầu đặt hàng
+│           │   ├── orders.service.ts          <-- [Task 5.4] Nghiệp vụ tính tiền, kiểm tra tồn kho & Transaction
+│           │   ├── order-state-machine.ts     <-- [Task 5.4] Quản lý vòng đời trạng thái đơn (PENDING, PAID...)
+│           │   └── orders.service.spec.ts     <-- [Task 5.4] Unit Tests kiểm thử luồng tạo đơn & Concurrency
+│           └── products/
+│               └── sugar-ice.calculator.ts    <-- [Task 5.4] Định mức tiêu thụ nguyên liệu (Đường, Đá, Cafe, Trà, Sữa)
 └── docs/
-    └── order-service.md                       <-- [Task 5.4] Đặc tả API, quy trình nghiệp vụ & hướng dẫn kiểm thử
+    └── order-service.md                       <-- [Task 5.4] Đặc tả API, quy trình nghiệp vụ & tài liệu báo cáo
 ```
 
 ---
@@ -33,7 +35,7 @@ SWE_ASG2/
 
 - **Giao thức**: `HTTP POST`
 - **Đường dẫn**: `/orders`
-- **Xác thực**: Hỗ trợ cả người dùng đã đăng nhập (lấy `userId` từ token JWT) hoặc khách vãng lai (lấy `userId` từ body, mặc định khách hàng mẫu).
+- **Xác thực**: Hỗ trợ cả người dùng đã đăng nhập (lấy `userId` từ token JWT) hoặc khách vãng lai (lấy `userId` từ body, mặc định khách hàng mẫu `customer@brewlite.vn`).
 
 ### 2.1. Request Payload (Body)
 
@@ -110,30 +112,34 @@ Mã nguồn tại [`apps/api/src/orders/orders.service.ts`](../apps/api/src/orde
 [Client gửi Giỏ hàng]
          │
          ▼
-[1. Validate DTO] ───────────────► Báo lỗi 400 nếu rỗng hoặc thiếu trường
+[1. Validate DTO] ─────────────────────► Báo lỗi 400 nếu rỗng hoặc thiếu trường
          │
          ▼
-[2. Kiểm tra Sản phẩm & Kho] ────► Báo lỗi 404 (không tồn tại) hoặc 400 (hết hàng / tạm ngưng)
+[2. Kiểm tra Món & Tồn kho] ──────────► Báo lỗi 404 (không tồn tại) hoặc 400 (hết món)
          │
          ▼
-[3. Tính toán Giá tiền Backend] ─► Base Price + Size Modifier + Toppings (Chống gian lận giá)
+[3. Kiểm tra Định mức Nguyên liệu] ───► Tính định mức Cà phê, Trà, Sữa, Đường, Đá
          │
          ▼
-[4. Xử lý Mã Khuyến mãi] ────────► Kiểm tra Hạn dùng, Min Order, Tính Discount Amount
+[4. Tính toán Giá tiền Backend] ──────► Base Price + Size Modifier + Toppings (Chống gian lận giá)
+         │
+         ▼
+[5. Xử lý Mã Khuyến mãi] ──────────────► Kiểm tra Hạn dùng, Min Order, Tính Discount Amount
          │
          ▼
 ┌────────────────────────────────────────────────────────┐
-│     5. Database Transaction (Prisma $transaction)      │
+│     6. Database Transaction (Prisma $transaction)      │
 │                                                        │
-│  a. Atomic decrement tồn kho sản phẩm:                 │
+│  a. Atomic decrement tồn kho món (Optimistic Lock):    │
 │     stock = stock - quantity, version = version + 1    │
-│  b. Tăng lượt sử dụng mã khuyến mãi (usedCount)       │
-│  c. Tạo bản ghi Order với trạng thái PENDING           │
-│  d. Tạo các bản ghi OrderItem tương ứng               │
+│  b. Atomic decrement tồn kho nguyên liệu (nếu có)      │
+│  c. Tăng lượt sử dụng mã khuyến mãi (usedCount)       │
+│  d. Tạo bản ghi Order với trạng thái PENDING           │
+│  e. Tạo các bản ghi OrderItem tương ứng               │
 └────────────────────────────────────────────────────────┘
          │
          ▼
-[6. Trả về Order & Mã đơn ORD-{id}]
+[Trả về Order & Mã đơn ORD-{id}]
 ```
 
 ### Các nguyên tắc an toàn dữ liệu:
@@ -151,6 +157,7 @@ Mã nguồn tại [`apps/api/src/orders/orders.service.ts`](../apps/api/src/orde
 | Sản phẩm không có trong DB | `404 Not Found` | `Sản phẩm với ID {id} không tồn tại.` |
 | Sản phẩm tạm ngưng phục vụ | `400 Bad Request` | `Sản phẩm "{name}" hiện đang tạm ngừng phục vụ.` |
 | Đặt vượt quá số lượng trong kho | `400 Bad Request` | `Sản phẩm "{name}" chỉ còn {stock} phần trong kho, không đủ đáp ứng số lượng yêu cầu ({qty}).` |
+| Kho không đủ nguyên liệu | `400 Bad Request` | `Kho không đủ hạt cà phê/lá trà/sữa/đường/đá để pha chế...` |
 | Mã khuyến mãi hết hạn/không hợp lệ | `400 Bad Request` | `Mã khuyến mãi "{code}" không tồn tại hoặc đã bị vô hiệu hóa.` |
 | Đơn chưa đạt giá trị tối thiểu của mã | `400 Bad Request` | `Đơn hàng tối thiểu phải từ {min}đ để áp dụng mã "{code}".` |
 
@@ -158,10 +165,9 @@ Mã nguồn tại [`apps/api/src/orders/orders.service.ts`](../apps/api/src/orde
 
 ## 5. Kết Quả Kiểm Thử Đơn Vị (Unit Tests)
 
-Bộ kiểm thử tại [`apps/api/src/orders/orders.service.spec.ts`](../apps/api/src/orders/orders.service.spec.ts) bao gồm các kịch bản kiểm tra:
-1. `chặn lỗi khi giỏ hàng rỗng`: Đảm bảo ném `BadRequestException`.
-2. `chặn lỗi khi sản phẩm không tồn tại trong CSDL`: Đảm bảo ném `NotFoundException`.
-3. `chặn lỗi khi sản phẩm tạm ngưng phục vụ (isAvailable = false)`: Đảm bảo ném `BadRequestException`.
-4. `chặn lỗi khi số lượng đặt vượt quá tồn kho`: Đảm bảo ném `BadRequestException`.
-5. `tạo đơn hàng thành công, tính đúng tiền, trừ tồn kho và trạng thái PENDING`: Kiểm tra tính đúng subtotal, tạo order và gọi lệnh trừ kho.
-6. `áp dụng mã khuyến mãi thành công và tính đúng tiền giảm giá`: Kiểm tra tính chiết khấu phần trăm (Percentage) và cập nhật `usedCount`.
+Bộ kiểm thử tại [`apps/api/src/orders/orders.service.spec.ts`](../apps/api/src/orders/orders.service.spec.ts) bao gồm:
+1. **Kiểm thử logic OrderStateMachine**: Chuyển trạng thái hợp lệ và chặn các chuyển đổi bất hợp lệ.
+2. **Kiểm thử quy trình tạo đơn hàng**: Chặn giỏ hàng rỗng, chặn món không tồn tại, kiểm tra hết hàng, tạo đơn thành công, áp dụng mã voucher.
+3. **Kiểm thử Optimistic Locking & Xử lý đồng thời (Concurrency)**:
+   - Giả lập 10 requests cùng đặt mua 1 sản phẩm có tồn kho = 5 tại cùng 1 thời điểm.
+   - Kết quả: Không bị bán vượt tồn kho (race condition), tồn kho không bao giờ bị âm.

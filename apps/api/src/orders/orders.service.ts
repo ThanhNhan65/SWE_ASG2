@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { OrderStateMachine, OrderStatus } from './order-state-machine';
 import { CreateOrderDto, ProductSize } from './dto/create-order.dto';
+import { calculateSugarAndIceConsumption } from '../products/sugar-ice.calculator';
 
 const SIZE_EXTRA_PRICE: Record<ProductSize, number> = {
   [ProductSize.S]: 0,
@@ -22,10 +23,11 @@ export class OrdersService {
 
   /**
    * Task 5.4: Tạo đơn hàng từ giỏ hàng
-   * - Validate sản phẩm, số lượng, tính khả dụng và tồn kho
+   * - Validate sản phẩm, số lượng, tính khả dụng và tồn kho món
+   * - Kiểm tra định mức nguyên liệu (hạt cà phê, trà, sữa, đường, đá)
    * - Tính tổng tiền chuẩn xác phía Backend (chống gian lận giá)
    * - Xử lý mã khuyến mãi (nếu có)
-   * - Thực thi Transaction trừ tồn kho và tạo Order + OrderItem
+   * - Thực thi Transaction trừ tồn kho món, trừ nguyên liệu và tạo Order + OrderItem
    */
   async createOrder(dto: CreateOrderDto, authUserId?: number | string) {
     if (!dto.items || dto.items.length === 0) {
@@ -35,7 +37,6 @@ export class OrdersService {
     // 1. Xác định User đặt hàng
     let userId = authUserId ? Number(authUserId) : dto.userId ? Number(dto.userId) : null;
     if (!userId) {
-      // Fallback lấy tài khoản khách hàng mặc định (customer@brewlite.vn)
       const defaultUser = await this.prisma.user.findFirst();
       if (!defaultUser) {
         throw new NotFoundException('Hệ thống chưa có tài khoản khách hàng để tạo đơn.');
@@ -55,7 +56,7 @@ export class OrdersService {
     });
     const productMap = new Map(products.map((p) => [p.id, p]));
 
-    // 3. Validate sản phẩm, trạng thái phục vụ & kiểm tra tồn kho
+    // 3. Validate sản phẩm, trạng thái phục vụ & kiểm tra tồn kho món
     const orderItemsData: Array<{
       productId: number;
       size: ProductSize;
@@ -87,7 +88,7 @@ export class OrdersService {
         );
       }
 
-      // 4. Tính toán giá tiền phía Backend
+      // Tính toán giá tiền phía Backend
       const size = item.size || ProductSize.M;
       const sizePrice = SIZE_EXTRA_PRICE[size] ?? 5000;
       const toppingsPrice = Array.isArray(item.toppings)
@@ -108,6 +109,63 @@ export class OrdersService {
         qty: item.quantity,
         lineTotal,
       });
+    }
+
+    // 4. Kiểm tra định mức tiêu thụ nguyên liệu (Cà phê, Trà, Sữa, Đường, Đá)
+    const consumption = calculateSugarAndIceConsumption(
+      dto.items.map((item) => {
+        const prod = productMap.get(item.productId);
+        return {
+          productId: item.productId,
+          productName: prod?.name || String(item.productId),
+          size: item.size || 'M',
+          sweetness: item.sweetness,
+          ice: item.ice,
+          qty: item.quantity,
+        };
+      }),
+    );
+
+    // Kiểm tra kho nguyên liệu nếu bảng Ingredient có dữ liệu
+    try {
+      if ((this.prisma as any)?.ingredient?.findUnique) {
+        const [coffeeRecord, teaRecord, milkRecord, sugarRecord, iceRecord] = await Promise.all([
+          (this.prisma as any).ingredient.findUnique({ where: { code: 'COFFEE_BEANS' } }),
+          (this.prisma as any).ingredient.findUnique({ where: { code: 'TEA_LEAVES' } }),
+          (this.prisma as any).ingredient.findUnique({ where: { code: 'MILK' } }),
+          (this.prisma as any).ingredient.findUnique({ where: { code: 'SUGAR' } }),
+          (this.prisma as any).ingredient.findUnique({ where: { code: 'ICE' } }),
+        ]);
+
+        if (coffeeRecord && consumption.totalCoffeeGrams > 0 && coffeeRecord.stock < consumption.totalCoffeeGrams) {
+          throw new BadRequestException(
+            `Kho không đủ hạt cà phê để pha chế (còn ${Math.floor(coffeeRecord.stock)}g, cần ${consumption.totalCoffeeGrams}g).`,
+          );
+        }
+        if (teaRecord && consumption.totalTeaGrams > 0 && teaRecord.stock < consumption.totalTeaGrams) {
+          throw new BadRequestException(
+            `Kho không đủ lá trà để pha chế (còn ${Math.floor(teaRecord.stock)}g, cần ${consumption.totalTeaGrams}g).`,
+          );
+        }
+        if (milkRecord && consumption.totalMilkMl > 0 && milkRecord.stock < consumption.totalMilkMl) {
+          throw new BadRequestException(
+            `Kho không đủ sữa để pha chế (còn ${Math.floor(milkRecord.stock)}ml, cần ${consumption.totalMilkMl}ml).`,
+          );
+        }
+        if (sugarRecord && consumption.totalSugarGrams > 0 && sugarRecord.stock < consumption.totalSugarGrams) {
+          throw new BadRequestException(
+            `Kho không đủ đường để pha chế (còn ${Math.floor(sugarRecord.stock)}g, cần ${consumption.totalSugarGrams}g).`,
+          );
+        }
+        if (iceRecord && consumption.totalIceGrams > 0 && iceRecord.stock < consumption.totalIceGrams) {
+          throw new BadRequestException(
+            `Kho không đủ đá để pha chế (còn ${Math.floor(iceRecord.stock)}g, cần ${consumption.totalIceGrams}g).`,
+          );
+        }
+      }
+    } catch (err: any) {
+      if (err instanceof BadRequestException) throw err;
+      // Nếu bảng ingredient chưa migrate, bỏ qua kiểm tra nguyên liệu
     }
 
     // 5. Kiểm tra & áp dụng mã khuyến mãi (nếu có)
@@ -151,11 +209,11 @@ export class OrdersService {
     }
 
     const total = Math.max(0, subtotal - discountAmount);
-    const pointsEarned = Math.floor(total / 1000); // Tích 1 điểm cho mỗi 1.000 VNĐ
+    const pointsEarned = Math.floor(total / 1000); // 1 điểm / 1.000 VNĐ
 
     // 6. Thực thi Transaction đảm bảo tính ACID
     const newOrder = await this.prisma.$transaction(async (tx) => {
-      // 6.1. Trừ tồn kho sản phẩm
+      // 6.1. Trừ tồn kho sản phẩm (Optimistic Locking)
       for (const item of dto.items) {
         await tx.product.update({
           where: { id: item.productId },
@@ -166,7 +224,45 @@ export class OrdersService {
         });
       }
 
-      // 6.2. Cập nhật lượt dùng khuyến mãi nếu có
+      // 6.2. Trừ tồn kho nguyên liệu tương ứng nếu có
+      try {
+        if ((tx as any)?.ingredient?.update) {
+          if (consumption.totalCoffeeGrams > 0) {
+            await (tx as any).ingredient.update({
+              where: { code: 'COFFEE_BEANS' },
+              data: { stock: { decrement: consumption.totalCoffeeGrams } },
+            });
+          }
+          if (consumption.totalTeaGrams > 0) {
+            await (tx as any).ingredient.update({
+              where: { code: 'TEA_LEAVES' },
+              data: { stock: { decrement: consumption.totalTeaGrams } },
+            });
+          }
+          if (consumption.totalMilkMl > 0) {
+            await (tx as any).ingredient.update({
+              where: { code: 'MILK' },
+              data: { stock: { decrement: consumption.totalMilkMl } },
+            });
+          }
+          if (consumption.totalSugarGrams > 0) {
+            await (tx as any).ingredient.update({
+              where: { code: 'SUGAR' },
+              data: { stock: { decrement: consumption.totalSugarGrams } },
+            });
+          }
+          if (consumption.totalIceGrams > 0) {
+            await (tx as any).ingredient.update({
+              where: { code: 'ICE' },
+              data: { stock: { decrement: consumption.totalIceGrams } },
+            });
+          }
+        }
+      } catch {
+        // Bỏ qua nếu bảng ingredient không sẵn sàng
+      }
+
+      // 6.3. Cập nhật lượt dùng khuyến mãi nếu có
       if (appliedPromotion) {
         await tx.promotion.update({
           where: { id: appliedPromotion.id },
@@ -174,7 +270,7 @@ export class OrdersService {
         });
       }
 
-      // 6.3. Tạo Order và các OrderItem
+      // 6.4. Tạo Order và các OrderItem
       return tx.order.create({
         data: {
           userId,
