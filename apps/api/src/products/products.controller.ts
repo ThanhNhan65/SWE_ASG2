@@ -44,6 +44,16 @@ export class ProductsController {
   }
 
   /**
+   * GET /products/ingredients
+   * Lấy danh sách định lượng nguyên liệu trong kho (giống BrewLite 1 & branch Vinh)
+   */
+  @Get('ingredients')
+  @HttpCode(HttpStatus.OK)
+  async findAllIngredients() {
+    return this.productsService.findAllIngredients();
+  }
+
+  /**
    * GET /products/:id
    * Xem thông tin chi tiết một sản phẩm
    */

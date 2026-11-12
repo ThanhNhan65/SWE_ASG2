@@ -42,11 +42,6 @@ describe('ProductsService - Unit Tests (Task 4.3)', () => {
     },
   ];
 
-  const mockToppings = [
-    { id: 1, name: 'Trân châu đen', price: 10000, stock: 15, isAvailable: true },
-    { id: 2, name: 'Kem Cheese', price: 12000, stock: 8, isAvailable: true },
-  ];
-
   beforeEach(() => {
     mockPrisma = {
       product: {
@@ -54,6 +49,9 @@ describe('ProductsService - Unit Tests (Task 4.3)', () => {
         findUnique: vi.fn(),
       },
       topping: {
+        findMany: vi.fn(),
+      },
+      ingredient: {
         findMany: vi.fn(),
       },
     };
@@ -148,6 +146,14 @@ describe('ProductsService - Unit Tests (Task 4.3)', () => {
       expect(result.price).toBe(35000);
       expect(result.stock).toBe(50);
     });
+
+    it('findOne hoạt động tương đương findById', async () => {
+      mockPrisma.product.findUnique.mockResolvedValue(mockProducts[0]);
+
+      const result = await productsService.findOne(1);
+
+      expect(result).toEqual(mockProducts[0]);
+    });
   });
 
   describe('4. Xử lý lỗi API & Ngoại lệ (API Error Handling)', () => {
@@ -180,6 +186,26 @@ describe('ProductsService - Unit Tests (Task 4.3)', () => {
       await expect(productsService.findAll()).rejects.toThrow(
         'Cannot reach database server at localhost:5432',
       );
+    });
+  });
+
+  describe('5. Lấy toàn bộ Topping & Nguyên liệu (findAllToppings & findAllIngredients)', () => {
+    it('trả về danh sách toàn bộ topping', async () => {
+      const mockToppings = [{ id: 1, name: 'Trân Châu Đen', price: 10000 }];
+      mockPrisma.topping.findMany.mockResolvedValue(mockToppings);
+
+      const result = await productsService.findAllToppings();
+
+      expect(result).toEqual(mockToppings);
+    });
+
+    it('trả về danh sách nguyên liệu trong kho', async () => {
+      const mockIngredients = [{ id: 1, code: 'SUGAR', name: 'Đường' }];
+      mockPrisma.ingredient.findMany.mockResolvedValue(mockIngredients);
+
+      const result = await productsService.findAllIngredients();
+
+      expect(result).toEqual(mockIngredients);
     });
   });
 });

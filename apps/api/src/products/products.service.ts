@@ -22,7 +22,10 @@ export class ProductsService {
    */
   async findAll(filter?: ProductFilterDto) {
     try {
-      const where: any = {};
+      const where: {
+        isAvailable?: boolean;
+        name?: { contains: string; mode: 'insensitive' };
+      } = {};
 
       if (filter?.isAvailable !== undefined) {
         where.isAvailable = filter.isAvailable;
@@ -36,7 +39,7 @@ export class ProductsService {
       }
 
       const products = await this.prisma.product.findMany({
-        where,
+        where: Object.keys(where).length > 0 || filter ? where : undefined,
         orderBy: { id: 'asc' },
       });
 
@@ -79,6 +82,13 @@ export class ProductsService {
   }
 
   /**
+   * Alias tương thích với Vinh branch & BrewLite 1
+   */
+  async findOne(id: number) {
+    return this.findById(id);
+  }
+
+  /**
    * Lấy danh sách Topping đi kèm cho thực đơn
    */
   async getToppings() {
@@ -93,5 +103,17 @@ export class ProductsService {
       );
       throw error;
     }
+  }
+
+  async findAllToppings() {
+    return this.prisma.topping.findMany({
+      orderBy: { id: 'asc' },
+    });
+  }
+
+  async findAllIngredients() {
+    return this.prisma.ingredient.findMany({
+      orderBy: { id: 'asc' },
+    });
   }
 }
