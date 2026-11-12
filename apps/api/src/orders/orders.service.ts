@@ -3,10 +3,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { OrderStateMachine, OrderStatus } from './order-state-machine';
-import { CreateOrderDto, ProductSize } from './dto/create-order.dto';
-import { calculateSugarAndIceConsumption } from '../products/sugar-ice.calculator';
+import { PrismaService } from '../prisma/prisma.service.js';
+import { OrderStateMachine, OrderStatus } from './order-state-machine.js';
+import { CreateOrderDto, ProductSize } from './dto/create-order.dto.js';
+import { calculateSugarAndIceConsumption } from '../products/sugar-ice.calculator.js';
 
 const SIZE_EXTRA_PRICE: Record<ProductSize, number> = {
   [ProductSize.S]: 0,

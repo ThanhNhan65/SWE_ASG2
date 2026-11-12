@@ -1,4 +1,21 @@
-version: '3.8'
-
 services:
-  # Services will be configured in subsequent tasks
+  postgres:
+    image: postgres:16-alpine
+    container_name: brewlite-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-brewlite_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-brewlite_password}
+      POSTGRES_DB: ${POSTGRES_DB:-brewlite_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-brewlite_user} -d ${POSTGRES_DB:-brewlite_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

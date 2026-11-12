@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { OrdersService } from './orders.service';
-import { OrderStateMachine, OrderStatus } from './order-state-machine';
-import { ProductSize } from './dto/create-order.dto';
+import { OrdersService } from './orders.service.js';
+import { OrderStateMachine, OrderStatus } from './order-state-machine.js';
+import { ProductSize } from './dto/create-order.dto.js';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 describe('OrdersService, StateMachine & Concurrency (Task 5.4 & Task 10)', () => {
@@ -52,6 +52,12 @@ describe('OrdersService, StateMachine & Concurrency (Task 5.4 & Task 10)', () =>
     it('cho phép chuyển từ PAID sang PREPARING', () => {
       expect(() => {
         stateMachine.assertTransition(OrderStatus.PAID, OrderStatus.PREPARING);
+      }).not.toThrow();
+    });
+
+    it('cho phép chuyển từ PREPARING sang READY', () => {
+      expect(() => {
+        stateMachine.assertTransition(OrderStatus.PREPARING, OrderStatus.READY);
       }).not.toThrow();
     });
 
@@ -293,6 +299,44 @@ describe('OrdersService, StateMachine & Concurrency (Task 5.4 & Task 10)', () =>
       expect(product.stock).toBe(0);
       expect(product.stock).toBeGreaterThanOrEqual(0);
       expect(product.version).toBe(initialStock + 1);
+    });
+  });
+
+  describe('4. OrdersService.findByCode & findByUserId', () => {
+    it('trả về đơn hàng khi tìm thấy theo mã ORD-1', async () => {
+      const mockOrder = { id: 1, status: OrderStatus.PENDING, items: [] };
+      mockPrisma.order.findUnique.mockResolvedValue(mockOrder);
+
+      const result = await ordersService.findByCode('ORD-1');
+
+      expect(mockPrisma.order.findUnique).toHaveBeenCalled();
+      expect(result).toMatchObject(mockOrder);
+    });
+
+    it('ném NotFoundException khi không tìm thấy đơn', async () => {
+      mockPrisma.order.findUnique.mockResolvedValue(null);
+
+      await expect(ordersService.findByCode('ORD-999')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('trả về danh sách đơn hàng của user', async () => {
+      const mockOrders = [{ id: 1, userId: 1, status: OrderStatus.PENDING, items: [] }];
+      mockPrisma.order.findMany.mockResolvedValue(mockOrders);
+
+      const result = await ordersService.findByUserId(1);
+
+      expect(mockPrisma.order.findMany).toHaveBeenCalled();
+      expect(result).toEqual(mockOrders);
+    });
+
+    it('trả về mảng rỗng [] khi user chưa có đơn nào', async () => {
+      mockPrisma.order.findMany.mockResolvedValue([]);
+
+      const result = await ordersService.findByUserId(99);
+
+      expect(result).toEqual([]);
     });
   });
 });
