@@ -1,4 +1,3 @@
-
 import { Controller, Get, Param, ParseIntPipe } from '@nestjs/common';
 import { ProductsService } from './products.service.js';
 import { Products } from './Interfaces/product.interface.js';
