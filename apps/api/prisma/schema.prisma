@@ -1,42 +1,42 @@
 datasource db {
-    provider = "postgresql"
-    url = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
-    provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 enum OrderStatus {
-    PENDING
-    PAID
-    PREPARING
-    READY
-    COMPLETED
-    PAYMENT_FAILED
-    CANCELLED
+  PENDING
+  PAID
+  PREPARING
+  READY
+  COMPLETED
+  PAYMENT_FAILED
+  CANCELLED
 }
 
 enum ProductSize {
-    S
-    M
-    L
+  S
+  M
+  L
 }
 
 enum PaymentMethod {
-    WALLET
-    CARD
+  WALLET
+  CARD
 }
 
 enum PaymentStatus {
-    PENDING
-    SUCCESS
-    FAILED
+  PENDING
+  SUCCESS
+  FAILED
 }
 
 enum DiscountType {
-    PERCENTAGE
-    FIXED
+  PERCENTAGE
+  FIXED
 }
 
 model User {
@@ -60,7 +60,7 @@ model Product {
   imageUrl    String?
   stock       Int         @default(0)
   isAvailable Boolean     @default(true)
-  version     Int         @default(1) // Phục vụ Optimistic Locking
+  version     Int         @default(1) // Phục vụ Optimistic Locking (Task 10)
   orderItems  OrderItem[]
   cartItems   CartItem[]
   createdAt   DateTime    @default(now())
@@ -80,11 +80,11 @@ model Topping {
 
 model Ingredient {
   id           Int      @id @default(autoincrement())
-  code         String   @unique // 'SUGAR', 'ICE', 'COFFEE_BEANS', 'TEA_LEAVES', 'MILK'
-  name         String
-  stock        Float    @default(0)
-  unit         String   @default("g")
-  minThreshold Float    @default(1000)
+  code         String   @unique // 'SUGAR', 'ICE'
+  name         String   // 'Đường cát', 'Đá viên'
+  stock        Float    @default(0) // Số lượng tồn kho đơn vị gam (g)
+  unit         String   @default("g") // 'g'
+  minThreshold Float    @default(1000) // Ngưỡng cảnh báo sắp hết (1kg)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -132,9 +132,9 @@ model OrderItem {
   orderId   Int
   productId Int
   size      ProductSize
-  sweetness String?     @default("100%")
-  ice       String?     @default("Bình thường")
-  toppings  Json        @default("[]")
+  sweetness String?     @default("100%") // Khẩu vị đường: 0%, 30%, 50%, 70%, 100%
+  ice       String?     @default("Bình thường") // Lượng đá: Không đá, Ít đá, Bình thường
+  toppings  Json        @default("[]") // Lưu danh sách topping kèm giá
   unitPrice Int
   qty       Int
   lineTotal Int
@@ -180,8 +180,8 @@ model CartItem {
   size      ProductSize @default(M)
   toppings  Json        @default("[]")
   image     String?
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 
   cart    Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id])

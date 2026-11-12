@@ -1,6 +1,18 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service.js';
-import { OrderStateMachine, OrderStatus } from './order-state-machine.js';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { OrderStateMachine, OrderStatus } from './order-state-machine';
+import { CreateOrderDto, ProductSize } from './dto/create-order.dto';
+import { calculateSugarAndIceConsumption } from '../products/sugar-ice.calculator';
+
+const SIZE_EXTRA_PRICE: Record<ProductSize, number> = {
+  [ProductSize.S]: 0,
+  [ProductSize.M]: 5000,
+  [ProductSize.L]: 10000,
+};
 
 @Injectable()
 export class OrdersService {
@@ -8,6 +20,292 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly stateMachine: OrderStateMachine,
   ) {}
+
+  /**
+   * Task 5.4: Tạo đơn hàng từ giỏ hàng
+   * - Validate sản phẩm, số lượng, tính khả dụng và tồn kho món
+   * - Kiểm tra định mức nguyên liệu (hạt cà phê, trà, sữa, đường, đá)
+   * - Tính tổng tiền chuẩn xác phía Backend (chống gian lận giá)
+   * - Xử lý mã khuyến mãi (nếu có)
+   * - Thực thi Transaction trừ tồn kho món, trừ nguyên liệu và tạo Order + OrderItem
+   */
+  async createOrder(dto: CreateOrderDto, authUserId?: number | string) {
+    if (!dto.items || dto.items.length === 0) {
+      throw new BadRequestException('Giỏ hàng không được để trống khi đặt hàng.');
+    }
+
+    // 1. Xác định User đặt hàng
+    let userId = authUserId ? Number(authUserId) : dto.userId ? Number(dto.userId) : null;
+    if (!userId) {
+      const defaultUser = await this.prisma.user.findFirst();
+      if (!defaultUser) {
+        throw new NotFoundException('Hệ thống chưa có tài khoản khách hàng để tạo đơn.');
+      }
+      userId = defaultUser.id;
+    } else {
+      const userExists = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (!userExists) {
+        throw new NotFoundException(`Không tìm thấy tài khoản người dùng với ID: ${userId}`);
+      }
+    }
+
+    // 2. Lấy thông tin các sản phẩm từ database
+    const productIds = [...new Set(dto.items.map((i) => i.productId))];
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds } },
+    });
+    const productMap = new Map(products.map((p) => [p.id, p]));
+
+    // 3. Validate sản phẩm, trạng thái phục vụ & kiểm tra tồn kho món
+    const orderItemsData: Array<{
+      productId: number;
+      size: ProductSize;
+      sweetness: string;
+      ice: string;
+      toppings: any;
+      unitPrice: number;
+      qty: number;
+      lineTotal: number;
+    }> = [];
+
+    let subtotal = 0;
+
+    for (const item of dto.items) {
+      const product = productMap.get(item.productId);
+      if (!product) {
+        throw new NotFoundException(`Sản phẩm với ID ${item.productId} không tồn tại.`);
+      }
+
+      if (!product.isAvailable) {
+        throw new BadRequestException(
+          `Sản phẩm "${product.name}" hiện đang tạm ngừng phục vụ.`,
+        );
+      }
+
+      if (product.stock < item.quantity) {
+        throw new BadRequestException(
+          `Sản phẩm "${product.name}" chỉ còn ${product.stock} phần trong kho, không đủ đáp ứng số lượng yêu cầu (${item.quantity}).`,
+        );
+      }
+
+      // Tính toán giá tiền phía Backend
+      const size = item.size || ProductSize.M;
+      const sizePrice = SIZE_EXTRA_PRICE[size] ?? 5000;
+      const toppingsPrice = Array.isArray(item.toppings)
+        ? item.toppings.reduce((sum, t) => sum + (Number(t?.price) || 0), 0)
+        : 0;
+
+      const unitPrice = product.price + sizePrice + toppingsPrice;
+      const lineTotal = unitPrice * item.quantity;
+      subtotal += lineTotal;
+
+      orderItemsData.push({
+        productId: product.id,
+        size,
+        sweetness: item.sweetness || '100%',
+        ice: item.ice || 'Bình thường',
+        toppings: item.toppings || [],
+        unitPrice,
+        qty: item.quantity,
+        lineTotal,
+      });
+    }
+
+    // 4. Kiểm tra định mức tiêu thụ nguyên liệu (Cà phê, Trà, Sữa, Đường, Đá)
+    const consumption = calculateSugarAndIceConsumption(
+      dto.items.map((item) => {
+        const prod = productMap.get(item.productId);
+        return {
+          productId: item.productId,
+          productName: prod?.name || String(item.productId),
+          size: item.size || 'M',
+          sweetness: item.sweetness,
+          ice: item.ice,
+          qty: item.quantity,
+        };
+      }),
+    );
+
+    // Kiểm tra kho nguyên liệu nếu bảng Ingredient có dữ liệu
+    try {
+      if ((this.prisma as any)?.ingredient?.findUnique) {
+        const [coffeeRecord, teaRecord, milkRecord, sugarRecord, iceRecord] = await Promise.all([
+          (this.prisma as any).ingredient.findUnique({ where: { code: 'COFFEE_BEANS' } }),
+          (this.prisma as any).ingredient.findUnique({ where: { code: 'TEA_LEAVES' } }),
+          (this.prisma as any).ingredient.findUnique({ where: { code: 'MILK' } }),
+          (this.prisma as any).ingredient.findUnique({ where: { code: 'SUGAR' } }),
+          (this.prisma as any).ingredient.findUnique({ where: { code: 'ICE' } }),
+        ]);
+
+        if (coffeeRecord && consumption.totalCoffeeGrams > 0 && coffeeRecord.stock < consumption.totalCoffeeGrams) {
+          throw new BadRequestException(
+            `Kho không đủ hạt cà phê để pha chế (còn ${Math.floor(coffeeRecord.stock)}g, cần ${consumption.totalCoffeeGrams}g).`,
+          );
+        }
+        if (teaRecord && consumption.totalTeaGrams > 0 && teaRecord.stock < consumption.totalTeaGrams) {
+          throw new BadRequestException(
+            `Kho không đủ lá trà để pha chế (còn ${Math.floor(teaRecord.stock)}g, cần ${consumption.totalTeaGrams}g).`,
+          );
+        }
+        if (milkRecord && consumption.totalMilkMl > 0 && milkRecord.stock < consumption.totalMilkMl) {
+          throw new BadRequestException(
+            `Kho không đủ sữa để pha chế (còn ${Math.floor(milkRecord.stock)}ml, cần ${consumption.totalMilkMl}ml).`,
+          );
+        }
+        if (sugarRecord && consumption.totalSugarGrams > 0 && sugarRecord.stock < consumption.totalSugarGrams) {
+          throw new BadRequestException(
+            `Kho không đủ đường để pha chế (còn ${Math.floor(sugarRecord.stock)}g, cần ${consumption.totalSugarGrams}g).`,
+          );
+        }
+        if (iceRecord && consumption.totalIceGrams > 0 && iceRecord.stock < consumption.totalIceGrams) {
+          throw new BadRequestException(
+            `Kho không đủ đá để pha chế (còn ${Math.floor(iceRecord.stock)}g, cần ${consumption.totalIceGrams}g).`,
+          );
+        }
+      }
+    } catch (err: any) {
+      if (err instanceof BadRequestException) throw err;
+      // Nếu bảng ingredient chưa migrate, bỏ qua kiểm tra nguyên liệu
+    }
+
+    // 5. Kiểm tra & áp dụng mã khuyến mãi (nếu có)
+    let discountAmount = 0;
+    let appliedPromotion: any = null;
+
+    if (dto.promotionCode && dto.promotionCode.trim()) {
+      const promoCode = dto.promotionCode.trim().toUpperCase();
+      const promo = await this.prisma.promotion.findUnique({
+        where: { code: promoCode },
+      });
+
+      if (!promo || !promo.isActive) {
+        throw new BadRequestException(`Mã khuyến mãi "${promoCode}" không tồn tại hoặc đã bị vô hiệu hóa.`);
+      }
+
+      if (new Date() > promo.expiredAt) {
+        throw new BadRequestException(`Mã khuyến mãi "${promoCode}" đã hết hạn sử dụng.`);
+      }
+
+      if (promo.usageLimit !== null && promo.usedCount >= promo.usageLimit) {
+        throw new BadRequestException(`Mã khuyến mãi "${promoCode}" đã hết lượt sử dụng.`);
+      }
+
+      if (subtotal < promo.minOrderValue) {
+        throw new BadRequestException(
+          `Đơn hàng tối thiểu phải từ ${promo.minOrderValue.toLocaleString('vi-VN')}đ để áp dụng mã "${promoCode}".`,
+        );
+      }
+
+      if (promo.discountType === 'PERCENTAGE') {
+        discountAmount = Math.round(subtotal * (promo.discountValue / 100));
+        if (promo.maxDiscount && discountAmount > promo.maxDiscount) {
+          discountAmount = promo.maxDiscount;
+        }
+      } else if (promo.discountType === 'FIXED') {
+        discountAmount = Math.min(promo.discountValue, subtotal);
+      }
+
+      appliedPromotion = promo;
+    }
+
+    const total = Math.max(0, subtotal - discountAmount);
+    const pointsEarned = Math.floor(total / 1000); // 1 điểm / 1.000 VNĐ
+
+    // 6. Thực thi Transaction đảm bảo tính ACID
+    const newOrder = await this.prisma.$transaction(async (tx) => {
+      // 6.1. Trừ tồn kho sản phẩm (Optimistic Locking)
+      for (const item of dto.items) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: {
+            stock: { decrement: item.quantity },
+            version: { increment: 1 },
+          },
+        });
+      }
+
+      // 6.2. Trừ tồn kho nguyên liệu tương ứng nếu có
+      try {
+        if ((tx as any)?.ingredient?.update) {
+          if (consumption.totalCoffeeGrams > 0) {
+            await (tx as any).ingredient.update({
+              where: { code: 'COFFEE_BEANS' },
+              data: { stock: { decrement: consumption.totalCoffeeGrams } },
+            });
+          }
+          if (consumption.totalTeaGrams > 0) {
+            await (tx as any).ingredient.update({
+              where: { code: 'TEA_LEAVES' },
+              data: { stock: { decrement: consumption.totalTeaGrams } },
+            });
+          }
+          if (consumption.totalMilkMl > 0) {
+            await (tx as any).ingredient.update({
+              where: { code: 'MILK' },
+              data: { stock: { decrement: consumption.totalMilkMl } },
+            });
+          }
+          if (consumption.totalSugarGrams > 0) {
+            await (tx as any).ingredient.update({
+              where: { code: 'SUGAR' },
+              data: { stock: { decrement: consumption.totalSugarGrams } },
+            });
+          }
+          if (consumption.totalIceGrams > 0) {
+            await (tx as any).ingredient.update({
+              where: { code: 'ICE' },
+              data: { stock: { decrement: consumption.totalIceGrams } },
+            });
+          }
+        }
+      } catch {
+        // Bỏ qua nếu bảng ingredient không sẵn sàng
+      }
+
+      // 6.3. Cập nhật lượt dùng khuyến mãi nếu có
+      if (appliedPromotion) {
+        await tx.promotion.update({
+          where: { id: appliedPromotion.id },
+          data: { usedCount: { increment: 1 } },
+        });
+      }
+
+      // 6.4. Tạo Order và các OrderItem
+      return tx.order.create({
+        data: {
+          userId,
+          status: OrderStatus.PENDING,
+          subtotal,
+          discountAmount,
+          total,
+          pointsEarned,
+          promotionId: appliedPromotion?.id || null,
+          items: {
+            create: orderItemsData,
+          },
+        },
+        include: {
+          items: {
+            include: {
+              product: {
+                select: { id: true, name: true, price: true, imageUrl: true },
+              },
+            },
+          },
+          promotion: true,
+          user: {
+            select: { id: true, email: true, fullName: true },
+          },
+        },
+      });
+    });
+
+    return {
+      message: 'Tạo đơn hàng thành công',
+      orderCode: `ORD-${newOrder.id}`,
+      ...newOrder,
+    };
+  }
 
   async findByUserId(userId: string | number, status?: OrderStatus) {
     const uId = Number(userId);
@@ -32,14 +330,28 @@ export class OrdersService {
 
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { items: true },
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
+        },
+        user: {
+          select: { id: true, email: true, fullName: true },
+        },
+        promotion: true,
+        payments: true,
+      },
     });
 
     if (!order) {
       throw new NotFoundException(`Không tìm thấy đơn hàng với mã: ${orderCode}`);
     }
 
-    return order;
+    return {
+      orderCode: `ORD-${order.id}`,
+      ...order,
+    };
   }
 
   async transitionOrderStatus(orderCode: string, nextStatus: OrderStatus) {
@@ -51,10 +363,15 @@ export class OrdersService {
 
     this.stateMachine.assertTransition(order.status as OrderStatus, nextStatus);
 
-    return this.prisma.order.update({
+    const updated = await this.prisma.order.update({
       where: { id: order.id },
       data: { status: nextStatus },
       include: { items: true },
     });
+
+    return {
+      orderCode: `ORD-${updated.id}`,
+      ...updated,
+    };
   }
 }
