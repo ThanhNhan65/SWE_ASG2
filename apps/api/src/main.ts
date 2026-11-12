@@ -1,11 +1,19 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module.js';
 import { ValidationPipe } from '@nestjs/common';
+import { AppModule } from './app.module.js';
 
-async function bootstrap() {
+if (typeof process.loadEnvFile === 'function') {
+  try {
+    process.loadEnvFile();
+  } catch {
+    // Bỏ qua nếu chạy qua biến môi trường hệ thống / Docker
+  }
+}
+
+async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
-  app.setGlobalPrefix('api');
   app.enableCors();
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -13,8 +21,10 @@ async function bootstrap() {
     }),
   );
 
-  const port = process.env.PORT || 3000;
+  const port = process.env.PORT || 3001;
   await app.listen(port);
-  console.log(`Application is running on: http://localhost:${port}/api`);
+
+  console.log(`Backend running at http://localhost:${port}`);
 }
-bootstrap();
+
+void bootstrap();
