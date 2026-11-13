@@ -56,7 +56,7 @@ jobs:
       - name: "2. Run Linter"
         run: |
           echo "=== [2/4] RUN LINTER ==="
-          npm run lint --if-present
+          npm run lint
 
       # Giai đoạn 3: Unit Test
       - name: "3. Run Unit Tests"
@@ -66,12 +66,30 @@ jobs:
             echo "--> Thực thi Unit Tests Backend (Vitest)..."
             npm --prefix apps/api run test
           else
-            npm test --if-present
+            npm test
           fi
 
       # Giai đoạn 4: Build
       - name: "4. Build applications"
         run: |
           echo "=== [4/4] BUILD APPLICATIONS ==="
-          npm run build --if-present || echo "Bỏ qua build cho các module chưa có entry point ở Sprint 1"
+          npm run build
           echo "Hoàn thành toàn bộ quy trình CI Pipeline!"
+
+  deploy-production:
+    name: "Deploy Production (via CI Secret)"
+    needs: lint-test-build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "Trigger Render Production Deploy Hook"
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "RENDER_DEPLOY_HOOK_URL secret chưa được cấu hình trên GitHub -> bỏ qua bước gọi hook."
+            exit 0
+          fi
+          curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
+          echo "Đã kích hoạt deploy Production trên Render thành công!"
