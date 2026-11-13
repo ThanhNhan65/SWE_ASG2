@@ -19,7 +19,6 @@ import { useCartStore } from '@/store/useCartStore';
 import { getAuthToken, updateStoredUserPoints } from '@/lib/auth';
 
 type PaymentMethodType = 'WALLET' | 'CARD';
-type SimulationMode = 'SANDBOX' | 'MOCK_SUCCESS' | 'MOCK_FAIL';
 
 interface OrderPaidResult {
   orderId: number | string;
@@ -48,7 +47,6 @@ function CheckoutContent(): React.JSX.Element {
   }, [fetchCart]);
 
   const [method, setMethod] = useState<PaymentMethodType>('WALLET');
-  const [simMode, setSimMode] = useState<SimulationMode>('SANDBOX');
   const [loading, setLoading] = useState<boolean>(false);
   const isSubmittingRef = React.useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -240,9 +238,6 @@ function CheckoutContent(): React.JSX.Element {
       let paymentSucceeded = false;
       let serverErrorMessage: string | null = null;
 
-      const useSandbox = simMode === 'SANDBOX';
-      const mockSuccess = simMode !== 'MOCK_FAIL';
-
       const response = await fetch(`${apiUrl}/payments`, {
         method: 'POST',
         headers: {
@@ -253,8 +248,8 @@ function CheckoutContent(): React.JSX.Element {
           orderId: returnedOrderId,
           method: method,
           idempotencyKey: idempotencyKey,
-          mockSuccess: mockSuccess,
-          useSandbox: useSandbox,
+          mockSuccess: true,
+          useSandbox: true,
         }),
       });
 
@@ -649,47 +644,6 @@ function CheckoutContent(): React.JSX.Element {
               </p>
             </div>
           </label>
-
-          <div className="pt-2">
-            <p className="text-[11px] font-semibold text-slate-500 mb-1.5">
-              Chế độ xử lý cổng thanh toán:
-            </p>
-            <div className="grid grid-cols-3 gap-1.5 text-[11px]">
-              <button
-                type="button"
-                onClick={() => setSimMode('SANDBOX')}
-                className={`py-1.5 px-2 rounded-lg border font-semibold transition ${
-                  simMode === 'SANDBOX'
-                    ? 'bg-emerald-50 border-emerald-600 text-emerald-800'
-                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                Cổng Sandbox
-              </button>
-              <button
-                type="button"
-                onClick={() => setSimMode('MOCK_SUCCESS')}
-                className={`py-1.5 px-2 rounded-lg border font-semibold transition ${
-                  simMode === 'MOCK_SUCCESS'
-                    ? 'bg-emerald-50 border-emerald-600 text-emerald-800'
-                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                Giả lập: Thành công
-              </button>
-              <button
-                type="button"
-                onClick={() => setSimMode('MOCK_FAIL')}
-                className={`py-1.5 px-2 rounded-lg border font-semibold transition ${
-                  simMode === 'MOCK_FAIL'
-                    ? 'bg-rose-50 border-rose-600 text-rose-700'
-                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                Giả lập: Thất bại
-              </button>
-            </div>
-          </div>
         </div>
 
         {errorMessage && (
