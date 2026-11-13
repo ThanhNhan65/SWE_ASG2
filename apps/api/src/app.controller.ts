@@ -1,12 +1,21 @@
 import { Controller, Get } from '@nestjs/common';
-import { AppService } from './app.service.js';
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  @Get('health')
+  getHealth() {
+    return {
+      status: 'ok',
+      service: 'brewlite-api',
+      timestamp: new Date().toISOString(),
+    };
+  }
 
   @Get()
-  getHello(): string {
-    return this.appService.getHello();
+  getRoot() {
+    return {
+      name: 'BrewLite API',
+      version: '1.0.0',
+    };
   }
 }

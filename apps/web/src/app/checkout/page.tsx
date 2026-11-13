@@ -1,5 +1,4 @@
 'use client';
-
 import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -187,13 +186,12 @@ function CheckoutContent(): React.JSX.Element {
     try {
       if (!currentOrderCode || !returnedOrderId) {
         const orderPayloadItems = items.map((item) => ({
-          productId: String(item.productId),
+          productId: Number(item.productId),
           quantity: item.qty,
           size: item.size,
           sweetness: item.sweetness || '100%',
           ice: item.ice || 'Bình thường',
-          toppings: item.toppings?.map((t) => t.name) ?? [],
-          unitPrice: item.unitPrice,
+          toppings: item.toppings ?? [],
         }));
 
         const createOrderRes = await fetch(`${apiUrl}/orders`, {
@@ -204,8 +202,7 @@ function CheckoutContent(): React.JSX.Element {
           },
           body: JSON.stringify({
             items: orderPayloadItems,
-            promoCode: appliedPromo?.code || undefined,
-            pointsToUse: pointsToUse > 0 ? pointsToUse : undefined,
+            promotionCode: appliedPromo?.code || undefined,
           }),
         });
 
