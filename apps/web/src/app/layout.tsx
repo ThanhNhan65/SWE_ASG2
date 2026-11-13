@@ -1,13 +1,36 @@
 import type { Metadata } from 'next';
-import type { ReactNode } from 'react';
+import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 
-export const metadata: Metadata = { title: 'BrewLite', description: 'Thực đơn BrewLite' };
+const geistSans = Geist({
+  variable: '--font-geist-sans',
+  subsets: ['latin'],
+});
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+const geistMono = Geist_Mono({
+  variable: '--font-geist-mono',
+  subsets: ['latin'],
+});
+
+export const metadata: Metadata = {
+  title: 'BrewLite — Đặt đồ uống trực tuyến',
+  description: 'Ứng dụng đặt cà phê và đồ uống trực tuyến - Bài tập lớn môn Công nghệ phần mềm',
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
-    <html lang="vi">
-      <body>{children}</body>
+    <html
+      lang="vi"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
+      <body className="min-h-full flex flex-col bg-stone-50 text-stone-800" suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   );
 }

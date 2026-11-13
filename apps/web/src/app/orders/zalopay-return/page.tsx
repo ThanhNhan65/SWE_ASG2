@@ -11,8 +11,8 @@ import {
   RotateCcw,
   Home,
   RefreshCw,
-  ArrowLeft,
 } from 'lucide-react';
+import { Header } from '../../../components/Header';
 import { updateStoredUserPoints } from '@/lib/auth';
 import { useCartStore } from '@/store/useCartStore';
 
@@ -98,20 +98,14 @@ function ZalopayReturnContent(): React.JSX.Element {
   }, [result]);
 
   useEffect(() => {
-    if (countdown === 0 && result?.success) {
-      router.push('/orders');
+    if (countdown === 0 && result?.success && result.orderCode) {
+      router.push(`/orders/${encodeURIComponent(result.orderCode)}`);
     }
   }, [countdown, result, router]);
 
   return (
     <div className="min-h-screen bg-stone-50 text-stone-800 flex flex-col">
-      <div className="sticky top-0 z-40 bg-white border-b border-stone-200 px-4 py-3 flex items-center justify-between">
-        <Link href="/" className="p-2 -ml-2 rounded-full hover:bg-stone-100 text-stone-700">
-          <ArrowLeft className="w-5 h-5" />
-        </Link>
-        <h1 className="font-semibold text-lg text-stone-900">Kết quả thanh toán ZaloPay</h1>
-        <div className="w-9" />
-      </div>
+      <Header />
 
       <main className="max-w-md mx-auto px-4 py-12 flex-1 w-full flex items-center justify-center">
         <div className="w-full bg-white rounded-2xl border border-stone-200/90 shadow-md p-6 sm:p-8 text-center">
@@ -183,14 +177,18 @@ function ZalopayReturnContent(): React.JSX.Element {
               </div>
 
               <p className="text-[11px] text-slate-400">
-                Tự động chuyển đến lịch sử đơn hàng sau{' '}
+                Tự động chuyển đến đơn hàng sau{' '}
                 <strong className="text-emerald-700">{countdown}s</strong>...
               </p>
 
               <div className="flex gap-2 pt-2">
                 <Link
-                  href="/orders"
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs transition shadow-xs"
+                  href={
+                    result.orderCode
+                      ? `/orders/${encodeURIComponent(result.orderCode)}`
+                      : '/orders'
+                  }
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs transition shadow-sm"
                 >
                   <span>Xem đơn hàng ngay</span>
                   <ArrowRight className="w-4 h-4" />
@@ -231,7 +229,7 @@ function ZalopayReturnContent(): React.JSX.Element {
                       ? `/checkout?orderCode=${encodeURIComponent(result.orderCode)}`
                       : '/checkout'
                   }
-                  className="w-full inline-flex items-center justify-center gap-1.5 py-3 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs transition shadow-xs"
+                  className="w-full inline-flex items-center justify-center gap-1.5 py-3 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs transition shadow-sm"
                 >
                   <RotateCcw className="w-4 h-4" />
                   <span>Thử thanh toán lại</span>

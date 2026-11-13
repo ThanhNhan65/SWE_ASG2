@@ -1,32 +1,581 @@
+'use client';
+
+import React, { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
-import { CatalogLayout } from '@/components/CatalogLayout';
-import { ProductPhoto } from '@/components/ProductPhoto';
-import { ProductOptions } from '@/components/ProductOptions';
-import { getProduct, getToppings } from '@/lib/api';
-import { formatPrice } from '@/lib/product-options';
-import { notFound } from 'next/navigation';
+import { useRouter } from 'next/navigation';
+import {
+  ArrowLeft,
+  Plus,
+  Minus,
+  Check,
+  Coffee,
+  Sparkles,
+} from 'lucide-react';
+import {
+  ProductSize,
+  SweetnessLevel,
+  IceLevel,
+  ToppingOption,
+  ProductDetailItem,
+  IngredientOption,
+} from '../../../types/product';
+import {
+  COFFEE_PRODUCTS,
+  COFFEE_TOPPINGS,
+  SIZE_PRICES,
+  SWEETNESS_OPTIONS,
+  ICE_OPTIONS,
+  SIZE_STANDARDS,
+  SWEETNESS_FACTORS,
+  ICE_FACTORS,
+  getProductBaseType,
+  getRecipeItem,
+  calculateCustomizedPrice,
+} from '../../../data/coffeeProducts';
+import { useCartStore } from '../../../store/useCartStore';
+import { CartBadge } from '../../../components/CartBadge';
+import { getStoredUser } from '@/lib/auth';
 
-export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const productId = Number(id);
-  if (!/^\d+$/.test(id) || productId < 1 || productId > 2147483647) notFound();
+interface PageProps {
+  params: Promise<{ id: string }>;
+}
 
-  const product = await getProduct(productId);
-  if (!product) notFound();
-  const toppings = await getToppings();
+const FALLBACK_IMAGE =
+  'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?w=600&auto=format&fit=crop&q=80';
+
+export default function ProductDetailPage({ params }: PageProps) {
+  const router = useRouter();
+  const resolvedParams = React.use(params);
+  const productId = Number(resolvedParams.id);
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+  const [loading, setLoading] = useState<boolean>(true);
+  const [product, setProduct] = useState<ProductDetailItem | null>(null);
+  const [toppingsList, setToppingsList] = useState<ToppingOption[]>(COFFEE_TOPPINGS);
+  const [ingredients, setIngredients] = useState<IngredientOption[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchProduct = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`${apiUrl}/products`, { cache: 'no-store' });
+        if (res.ok) {
+          const list = await res.json();
+          const found = Array.isArray(list)
+            ? list.find(
+                (p: {
+                  id: number;
+                  name: string;
+                  price: number;
+                  image?: string;
+                  imageUrl?: string;
+                  description?: string;
+                  stock?: number;
+                  isAvailable?: boolean;
+                }) => Number(p.id) === productId,
+              )
+            : null;
+          if (found && isMounted) {
+            setProduct({
+              id: found.id,
+              name: found.name,
+              price: found.price,
+              imageUrl: found.imageUrl || found.image || FALLBACK_IMAGE,
+              description:
+                found.description ||
+                'Thức uống thơm ngon được pha chế tỉ mỉ từ nguyên liệu tươi nguyên chất.',
+              category: 'Đồ uống',
+              stock: found.stock,
+              isAvailable: found.isAvailable,
+            });
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Không thể tải từ backend, dùng fallback:', err);
+      }
+
+      if (isMounted) {
+        const fallback = COFFEE_PRODUCTS.find((p) => p.id === productId) || COFFEE_PRODUCTS[0];
+        setProduct(fallback);
+        setLoading(false);
+      }
+    };
+
+    const fetchToppingsAndIngredients = async () => {
+      try {
+        const [topRes, ingRes] = await Promise.all([
+          fetch(`${apiUrl}/products/toppings`, { cache: 'no-store' }),
+          fetch(`${apiUrl}/products/ingredients`, { cache: 'no-store' }),
+        ]);
+        if (topRes.ok) {
+          const list = await topRes.json();
+          if (Array.isArray(list) && list.length > 0 && isMounted) {
+            setToppingsList(list);
+          }
+        }
+        if (ingRes.ok) {
+          const ingList = await ingRes.json();
+          if (Array.isArray(ingList) && isMounted) {
+            setIngredients(ingList);
+          }
+        }
+      } catch (err) {
+        console.warn('Không thể tải topping/nguyên liệu từ backend, dùng fallback:', err);
+      }
+    };
+
+    void fetchProduct();
+    void fetchToppingsAndIngredients();
+    return () => {
+      isMounted = false;
+    };
+  }, [apiUrl, productId]);
+
+  const { addToCart } = useCartStore();
+
+  const [size, setSize] = useState<ProductSize>('M');
+  const [selectedToppings, setSelectedToppings] = useState<ToppingOption[]>([]);
+  const [sweetness, setSweetness] = useState<SweetnessLevel>('100%');
+  const [ice, setIce] = useState<IceLevel>('Bình thường');
+  const [quantity, setQuantity] = useState<number>(1);
+  const [showToast, setShowToast] = useState<boolean>(false);
+  const [isAdding, setIsAdding] = useState<boolean>(false);
+
+  const sugarIngredient = ingredients.find((i) => i.code === 'SUGAR');
+  const iceIngredient = ingredients.find((i) => i.code === 'ICE');
+  const coffeeIngredient = ingredients.find((i) => i.code === 'COFFEE_BEANS');
+  const teaIngredient = ingredients.find((i) => i.code === 'TEA_LEAVES');
+  const milkIngredient = ingredients.find((i) => i.code === 'MILK');
+
+  const sugarStock = sugarIngredient ? sugarIngredient.stock : 999999;
+  const iceStock = iceIngredient ? iceIngredient.stock : 999999;
+  const coffeeStock = coffeeIngredient ? coffeeIngredient.stock : 999999;
+  const teaStock = teaIngredient ? teaIngredient.stock : 999999;
+  const milkStock = milkIngredient ? milkIngredient.stock : 999999;
+
+  const baseType = getProductBaseType(product?.name || '');
+  const baseIngredientName = baseType === 'TEA' ? 'lá trà' : 'cà phê/sữa';
+
+  const isSizeAvailable = (checkSize: ProductSize) => {
+    const recipe = getRecipeItem(product?.name, checkSize);
+    if (recipe.coffee > 0 && coffeeStock < recipe.coffee * quantity) return false;
+    if (recipe.tea > 0 && teaStock < recipe.tea * quantity) return false;
+    if (recipe.milk > 0 && milkStock < recipe.milk * quantity) return false;
+    return true;
+  };
+
+  const isCurrentProductSoldOut =
+    product?.isAvailable === false ||
+    (product?.stock !== undefined && product.stock <= 0) ||
+    (!isSizeAvailable('S') && !isSizeAvailable('M') && !isSizeAvailable('L'));
+
+  const standard = SIZE_STANDARDS[size] || SIZE_STANDARDS.M;
+  const currentPrice = product?.price || 35000;
+  const pricing = useMemo(() => {
+    return calculateCustomizedPrice(currentPrice, size, selectedToppings, quantity);
+  }, [currentPrice, size, selectedToppings, quantity]);
+
+  useEffect(() => {
+    const std = SIZE_STANDARDS[size] || SIZE_STANDARDS.M;
+    const reqSugar = std.sugar * (SWEETNESS_FACTORS[sweetness] ?? 1.0) * quantity;
+    if (sweetness !== '0%' && sugarStock < reqSugar) {
+      setSweetness('0%');
+    }
+    const reqIce = std.ice * (ICE_FACTORS[ice] ?? 1.0) * quantity;
+    if (ice !== 'Không đá' && iceStock < reqIce) {
+      setIce('Không đá');
+    }
+  }, [size, quantity, sugarStock, iceStock, sweetness, ice]);
+
+  const handleToggleTopping = (topping: ToppingOption) => {
+    const isOutOfStock = topping.stock !== undefined ? topping.stock <= 0 : topping.isAvailable === false;
+    if (isOutOfStock) return;
+
+    setSelectedToppings((prev) => {
+      const exists = prev.some((t) => t.id === topping.id);
+      if (exists) {
+        return prev.filter((t) => t.id !== topping.id);
+      }
+      return [...prev, topping];
+    });
+  };
+
+  const handleAddToCart = async () => {
+    if (!product) return;
+
+    const currentUser = getStoredUser();
+    if (!currentUser) {
+      router.push(
+        `/login?redirect=${encodeURIComponent(`/products/${productId}`)}&notice=${encodeURIComponent(
+          'Vui lòng đăng ký hoặc đăng nhập tài khoản để thêm món vào giỏ hàng!',
+        )}`,
+      );
+      return;
+    }
+
+    setIsAdding(true);
+    addToCart({
+      productId: product.id,
+      name: product.name,
+      unitPrice: pricing.unitPrice,
+      size,
+      sweetness,
+      ice,
+      qty: quantity,
+      toppings: selectedToppings,
+    });
+    setIsAdding(false);
+    setShowToast(true);
+
+    setTimeout(() => {
+      setShowToast(false);
+    }, 2500);
+  };
+
+  if (loading || !product) {
+    return (
+      <div className="min-h-screen bg-stone-50 p-6 flex flex-col items-center justify-center">
+        <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-amber-600 border-t-transparent mb-3" />
+        <p className="text-xs text-stone-500">Đang tải thông tin món...</p>
+      </div>
+    );
+  }
 
   return (
-    <CatalogLayout>
-      <Link href="/" className="mb-5 inline-flex min-h-11 items-center rounded-xl px-3 text-stone-700 hover:bg-stone-100">← Thực đơn</Link>
-      <div className="grid items-start gap-7 md:grid-cols-2 md:gap-12">
-        <ProductPhoto imageUrl={product.imageUrl} name={product.name} />
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{product.name}</h1>
-          <p className="mt-2 font-semibold text-amber-800">{formatPrice(product.price)}</p>
-          {product.description && <p className="mt-3 text-stone-700">{product.description}</p>}
-          <ProductOptions product={product} toppings={toppings} />
+    <div className="min-h-screen bg-stone-50 pb-32">
+      {/* Top Header */}
+      <div className="sticky top-0 z-40 bg-white border-b border-stone-200 px-4 py-3 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="p-2 -ml-2 rounded-full hover:bg-stone-100 text-stone-700 transition"
+          aria-label="Quay lại"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+
+        <h1 className="font-semibold text-lg text-stone-900 truncate max-w-[220px]">
+          {product.name}
+        </h1>
+
+        <div className="flex items-center">
+          <CartBadge />
         </div>
       </div>
-    </CatalogLayout>
+
+      {/* Main Container */}
+      <div className="max-w-md mx-auto px-4 py-4 space-y-4">
+        {showToast && (
+          <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-emerald-700 text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 animate-bounce">
+            <Check className="w-4 h-4" />
+            <span>Đã thêm vào giỏ hàng thành công!</span>
+            <Link href="/cart" className="underline font-bold ml-1">
+              Xem giỏ
+            </Link>
+          </div>
+        )}
+
+        {/* Hero Image Card */}
+        <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-stone-100">
+          <div className="relative aspect-[4/3] w-full bg-stone-100 overflow-hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={product.imageUrl}
+              alt={product.name}
+              className="w-full h-full object-cover"
+            />
+          </div>
+
+          <div className="p-4 space-y-1.5">
+            <h2 className="font-bold text-stone-900 text-lg leading-snug">
+              {product.name}
+            </h2>
+            <p className="font-extrabold text-amber-800 text-lg">
+              {product.price.toLocaleString('vi-VN')} đ
+            </p>
+            <p className="text-xs text-stone-500 leading-relaxed pt-1">
+              {product.description}
+            </p>
+          </div>
+        </div>
+
+        {/* 1. Chọn Size (S/M/L) */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-100 space-y-3">
+          <div className="flex items-center justify-between pb-1 border-b border-stone-100">
+            <h3 className="font-semibold text-stone-900 text-sm flex items-center gap-1.5">
+              <Coffee className="w-4 h-4 text-amber-700" />
+              <span>Chọn Size (S / M / L)</span>
+            </h3>
+            <span className="text-xs font-semibold text-amber-800">
+              Size {size} (+{SIZE_PRICES[size].toLocaleString('vi-VN')} đ)
+            </span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2.5">
+            {(['S', 'M', 'L'] as ProductSize[]).map((s) => {
+              const isSelected = size === s;
+              const sizeInStock = isSizeAvailable(s);
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  disabled={!sizeInStock}
+                  onClick={() => sizeInStock && setSize(s)}
+                  className={`p-3 rounded-xl border text-center transition flex flex-col items-center justify-center relative ${
+                    !sizeInStock
+                      ? 'border-stone-200 bg-stone-100 text-stone-400 cursor-not-allowed opacity-60'
+                      : isSelected
+                        ? 'border-amber-700 bg-amber-50/70 text-amber-950 ring-1 ring-amber-700/30'
+                        : 'border-stone-200 hover:border-amber-200 text-stone-700 bg-stone-50/40'
+                  }`}
+                >
+                  {isSelected && sizeInStock && (
+                    <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-amber-700 text-white flex items-center justify-center text-[10px]">
+                      <Check className="w-3 h-3 stroke-[3]" />
+                    </span>
+                  )}
+                  <span className={`font-semibold text-sm ${!sizeInStock ? 'line-through' : ''}`}>
+                    Size {s}
+                  </span>
+                  <span className="text-[11px] text-stone-500 mt-0.5">
+                    {!sizeInStock ? 'Hết size' : s === 'S' ? 'Nhỏ' : s === 'M' ? 'Vừa' : 'Lớn'}
+                  </span>
+                  <span className={`text-xs font-bold mt-1 ${!sizeInStock ? 'text-stone-400' : 'text-amber-800'}`}>
+                    +{SIZE_PRICES[s].toLocaleString('vi-VN')} đ
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 2. Chọn Topping */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-100 space-y-3">
+          <div className="flex items-center justify-between pb-1 border-b border-stone-100">
+            <h3 className="font-semibold text-stone-900 text-sm flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <span>Chọn Topping</span>
+            </h3>
+            <span className="text-xs text-stone-500">
+              Đã chọn: <strong className="text-amber-800 font-semibold">{selectedToppings.length}</strong>
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {toppingsList.map((topping) => {
+              const isChecked = selectedToppings.some((t) => t.id === topping.id);
+              const isOutOfStock = topping.stock !== undefined ? topping.stock <= 0 : topping.isAvailable === false;
+              const remainingStock = topping.stock !== undefined ? topping.stock : topping.isAvailable ? 10 : 0;
+
+              return (
+                <div
+                  key={topping.id}
+                  onClick={() => handleToggleTopping(topping)}
+                  className={`flex items-center justify-between p-3 rounded-xl border transition select-none ${
+                    isOutOfStock
+                      ? 'border-stone-200 bg-stone-100/80 opacity-60 cursor-not-allowed'
+                      : isChecked
+                        ? 'border-amber-700 bg-amber-50/60 cursor-pointer shadow-sm'
+                        : 'border-stone-200 hover:bg-stone-50 bg-white cursor-pointer'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-4 h-4 rounded border flex items-center justify-center transition ${
+                        isOutOfStock
+                          ? 'border-stone-300 bg-stone-200 text-transparent'
+                          : isChecked
+                            ? 'bg-amber-700 border-amber-700 text-white'
+                            : 'border-stone-300 bg-white'
+                      }`}
+                    >
+                      {isChecked && !isOutOfStock && <Check className="w-3 h-3 stroke-[3]" />}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-medium ${isOutOfStock ? 'text-stone-400 line-through' : 'text-stone-800'}`}>
+                          {topping.name}
+                        </span>
+                        {isOutOfStock ? (
+                          <span className="text-[10px] bg-red-100 text-red-600 font-bold px-2 py-0.5 rounded-full">
+                            Hết hàng
+                          </span>
+                        ) : (
+                          <span className="text-[10px] bg-amber-100 text-amber-800 font-medium px-2 py-0.5 rounded-full">
+                            Còn lại: {remainingStock}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <span className={`text-xs font-bold ${isOutOfStock ? 'text-stone-400' : 'text-amber-900'}`}>
+                    +{topping.price.toLocaleString('vi-VN')} đ
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 3. Tùy chỉnh Độ ngọt & Lượng đá */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-100 space-y-3.5">
+          <h3 className="font-semibold text-stone-900 text-sm pb-1 border-b border-stone-100">
+            Tùy chỉnh khẩu vị
+          </h3>
+
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs text-stone-600">
+              <span className="font-medium">Lượng đường</span>
+              <span className="text-amber-800 font-semibold">{sweetness}</span>
+            </div>
+            <div className="grid grid-cols-5 gap-1.5">
+              {SWEETNESS_OPTIONS.map((level) => {
+                const requiredSugar = standard.sugar * (SWEETNESS_FACTORS[level] ?? 1.0) * quantity;
+                const isOutOfStock = level !== '0%' && sugarStock < requiredSugar;
+                return (
+                  <button
+                    key={level}
+                    type="button"
+                    disabled={isOutOfStock}
+                    onClick={() => !isOutOfStock && setSweetness(level)}
+                    className={`py-1.5 rounded-lg text-xs font-semibold border transition flex flex-col items-center justify-center ${
+                      isOutOfStock
+                        ? 'bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed opacity-60 line-through'
+                        : sweetness === level
+                          ? 'bg-amber-700 text-white border-amber-700'
+                          : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
+                    }`}
+                    title={isOutOfStock ? 'Hết đường trong kho' : undefined}
+                  >
+                    <span>{level}</span>
+                    {isOutOfStock && <span className="text-[9px] text-red-500 font-normal no-underline">Hết</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-1.5 pt-2 border-t border-stone-50">
+            <div className="flex justify-between text-xs text-stone-600">
+              <span className="font-medium">Lượng đá</span>
+              <span className="text-amber-800 font-semibold">{ice}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {ICE_OPTIONS.map((level) => {
+                const requiredIce = standard.ice * (ICE_FACTORS[level] ?? 1.0) * quantity;
+                const isOutOfStock = level !== 'Không đá' && iceStock < requiredIce;
+                return (
+                  <button
+                    key={level}
+                    type="button"
+                    disabled={isOutOfStock}
+                    onClick={() => !isOutOfStock && setIce(level)}
+                    className={`py-1.5 rounded-lg text-xs font-semibold border transition flex flex-col items-center justify-center ${
+                      isOutOfStock
+                        ? 'bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed opacity-60 line-through'
+                        : ice === level
+                          ? 'bg-amber-700 text-white border-amber-700'
+                          : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
+                    }`}
+                    title={isOutOfStock ? 'Hết đá trong kho' : undefined}
+                  >
+                    <span>{level}</span>
+                    {isOutOfStock && <span className="text-[9px] text-red-500 font-normal no-underline">Hết hàng</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* 4. Bảng tính giá theo tùy chọn thời gian thực */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-stone-100 space-y-2.5 text-xs text-stone-600">
+          <h3 className="font-semibold text-stone-900 pb-1 border-b border-stone-100 text-sm">
+            Chi tiết tính giá theo tùy chọn
+          </h3>
+          <div className="flex justify-between">
+            <span>Giá gốc sản phẩm</span>
+            <span>{pricing.basePrice.toLocaleString('vi-VN')} đ</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Phụ phí Size ({size})</span>
+            <span className="text-amber-800 font-medium">
+              +{pricing.sizePrice.toLocaleString('vi-VN')} đ
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span>Topping ({selectedToppings.length} món)</span>
+            <span className="text-amber-800 font-medium">
+              +{pricing.toppingsTotal.toLocaleString('vi-VN')} đ
+            </span>
+          </div>
+          <div className="flex justify-between font-semibold text-stone-900 pt-2 border-t border-stone-100 text-xs">
+            <span>Đơn giá 1 ly</span>
+            <span className="text-amber-900 font-bold">
+              {pricing.unitPrice.toLocaleString('vi-VN')} đ
+            </span>
+          </div>
+          <div className="flex justify-between font-semibold text-stone-900 text-xs">
+            <span>Số lượng</span>
+            <span className="text-stone-800">&times; {pricing.quantity}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Sticky Bottom Bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-stone-200 p-4 shadow-lg z-50">
+        <div className="max-w-md mx-auto flex items-center justify-between gap-3">
+          <div className="flex items-center border border-stone-200 rounded-lg overflow-hidden bg-stone-50 h-11">
+            <button
+              type="button"
+              onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+              className="p-1 px-3 text-stone-600 hover:bg-stone-200 transition h-full flex items-center justify-center"
+              aria-label="Giảm"
+            >
+              <Minus className="w-3.5 h-3.5" />
+            </button>
+            <span className="px-2.5 text-xs font-semibold text-stone-800 min-w-[28px] text-center">
+              {quantity}
+            </span>
+            <button
+              type="button"
+              onClick={() => setQuantity((q) => q + 1)}
+              className="p-1 px-3 text-stone-600 hover:bg-stone-200 transition h-full flex items-center justify-center"
+              aria-label="Tăng"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void handleAddToCart()}
+            disabled={isAdding || isCurrentProductSoldOut || !isSizeAvailable(size)}
+            className={`flex-1 font-semibold py-3 px-4 rounded-xl shadow-md transition flex items-center justify-between text-sm ${
+              isCurrentProductSoldOut || !isSizeAvailable(size)
+                ? 'bg-stone-300 text-stone-500 cursor-not-allowed shadow-none'
+                : 'bg-amber-700 hover:bg-amber-800 text-white active:scale-95'
+            }`}
+          >
+            <span>
+              {isCurrentProductSoldOut
+                ? `Hết ${baseIngredientName} - Tạm ngưng bán`
+                : !isSizeAvailable(size)
+                  ? `Hết nguyên liệu cho Size ${size}`
+                  : isAdding
+                    ? 'Đang thêm...'
+                    : 'Thêm vào giỏ'}
+            </span>
+            <span className="font-bold">
+              {pricing.lineTotal.toLocaleString('vi-VN')} đ
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

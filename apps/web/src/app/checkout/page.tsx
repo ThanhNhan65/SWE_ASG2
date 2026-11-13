@@ -202,6 +202,7 @@ function CheckoutContent(): React.JSX.Element {
           body: JSON.stringify({
             items: orderPayloadItems,
             promotionCode: appliedPromo?.code || undefined,
+            pointsToUse: pointsToUse > 0 ? pointsToUse : undefined,
           }),
         });
 

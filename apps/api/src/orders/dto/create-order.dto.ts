@@ -57,4 +57,13 @@ export class CreateOrderDto {
   @IsOptional()
   @IsString()
   promotionCode?: string;
+
+  @IsOptional()
+  @IsString()
+  promoCode?: string;
+
+  @IsOptional()
+  @IsInt({ message: 'Số điểm sử dụng phải là số nguyên' })
+  @Min(0, { message: 'Số điểm sử dụng không được âm' })
+  pointsToUse?: number;
 }
