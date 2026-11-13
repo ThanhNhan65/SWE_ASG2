@@ -9,7 +9,11 @@ export function CatalogLayout({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-40 border-b border-stone-200 bg-white">
         <nav aria-label="Điều hướng chính" className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3 sm:px-8">
           <Link href="/" className="py-2 text-xl font-bold text-amber-900">BrewLite</Link>
-          <CartBadge />
+          <div className="flex items-center gap-4 text-sm font-medium text-stone-700">
+            <Link href="/orders" className="hover:text-amber-800 transition">Đơn hàng</Link>
+            <Link href="/login" className="hover:text-amber-800 transition">Tài khoản</Link>
+            <CartBadge />
+          </div>
         </nav>
       </header>
       <main id="catalog-content" className="mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-12">{children}</main>
