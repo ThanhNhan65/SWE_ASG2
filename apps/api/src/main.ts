@@ -7,6 +7,8 @@ import { AppModule } from './app.module.js';
 if (typeof process.loadEnvFile === 'function') {
   for (const envPath of [
     resolve(process.cwd(), '.env'),
+    resolve(process.cwd(), 'apps/api/.env'),
+    resolve(process.cwd(), '../.env'),
     resolve(process.cwd(), '../../.env'),
   ]) {
     if (existsSync(envPath)) {
@@ -17,6 +19,13 @@ if (typeof process.loadEnvFile === 'function') {
       }
     }
   }
+}
+
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = 'postgresql://postgres:17092006@localhost:5432/brewlite_db?schema=public';
+}
+if (!process.env.DATABASE_URL_UNPOOLED) {
+  process.env.DATABASE_URL_UNPOOLED = process.env.DATABASE_URL;
 }
 
 async function bootstrap(): Promise<void> {
