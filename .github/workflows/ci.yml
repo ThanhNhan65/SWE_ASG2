@@ -8,9 +8,9 @@ name: BrewLite CI Pipeline
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     types: [opened, synchronize, reopened]
   workflow_dispatch: # Cho phép kích hoạt kiểm thử thủ công từ tab Actions trên GitHub
 

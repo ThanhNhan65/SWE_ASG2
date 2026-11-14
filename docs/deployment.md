@@ -74,7 +74,7 @@ Hệ thống được đóng gói đầy đủ 3 container qua [docker-compose.y
 
 Pipeline tự động được cấu hình tại [.github/workflows/ci.yml](../.github/workflows/ci.yml):
 
-1. **CI Pipeline (`lint-test-build`)** — Chạy khi có `push` hoặc `pull_request` vào `main` / `develop`:
+1. **CI Pipeline (`lint-test-build`)** — Chạy khi có `push` hoặc `pull_request` vào nhánh `main`:
    - Khởi tạo **PostgreSQL 16 service container** phục vụ kiểm thử tích hợp/E2E.
    - **Bước 1 (Install):** Cài đặt packages ở root, `apps/api`, `apps/web` và sinh Prisma Client (`prisma generate`).
    - **Bước 2 (Lint):** Chạy `npm run lint`.
