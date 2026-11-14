@@ -13,6 +13,7 @@
     "lint": "npm --prefix apps/api run lint && npm --prefix apps/web run lint",
     "db:push": "npm --prefix apps/api run db:push",
     "db:seed": "npm --prefix apps/api run db:seed",
+    "stock:set-1": "npm --prefix apps/api run stock:set-1",
     "prisma:generate": "npm --prefix apps/api run prisma:generate",
     "prisma:seed": "npm --prefix apps/api run prisma:seed",
     "prisma:studio": "npm --prefix apps/api exec prisma studio"
