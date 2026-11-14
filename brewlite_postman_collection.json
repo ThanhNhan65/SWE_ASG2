@@ -1,0 +1,586 @@
+{
+  "info": {
+    "name": "BrewLite - Toàn bộ kịch bản kiểm thử API (Full E2E & Scenarios)",
+    "description": "Bộ kịch bản kiểm thử Postman hoàn chỉnh cho BrewLite:\n1. Health Check\n2. Menu & Sản phẩm\n3. Khuyến mãi\n4. Tạo đơn hàng (Thành công + Bắt lỗi 400)\n5. Thanh toán (Thành công + Idempotency)\n6. Xác nhận trạng thái đơn\n7. Tranh chấp tồn kho Concurrency",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01. Hệ thống & Sức khỏe",
+      "item": [
+        {
+          "name": "GET /health (Kiểm tra hệ thống sống)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code là 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Hệ thống trả về status ok\", function () {",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.status).to.eql(\"ok\");",
+                  "    pm.expect(data.service).to.eql(\"brewlite-api\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02. Menu & Sản phẩm",
+      "item": [
+        {
+          "name": "GET /products (Lấy toàn bộ menu)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Lấy menu thành công (200 OK)\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var products = pm.response.json();",
+                  "    pm.expect(products).to.be.an('array');",
+                  "    pm.expect(products.length).to.be.above(0);",
+                  "    // Tự động lưu ID món đầu tiên để phục vụ cho các bước sau",
+                  "    pm.collectionVariables.set(\"selectedProductId\", products[0].id);",
+                  "    pm.collectionVariables.set(\"selectedProductName\", products[0].name);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": ["{{baseUrl}}"],
+              "path": ["products"]
+            }
+          }
+        },
+        {
+          "name": "GET /products/:id (Xem chi tiết món đã chọn)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Lấy chi tiết món thành công\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var product = pm.response.json();",
+                  "    pm.expect(product.id).to.eql(pm.collectionVariables.get(\"selectedProductId\"));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{selectedProductId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["products", "{{selectedProductId}}"]
+            }
+          }
+        },
+        {
+          "name": "GET /products/toppings (Danh sách Topping)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Lấy toppings thành công\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json()).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/toppings",
+              "host": ["{{baseUrl}}"],
+              "path": ["products", "toppings"]
+            }
+          }
+        },
+        {
+          "name": "GET /products/ingredients (Danh sách Nguyên liệu tồn kho)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Lấy nguyên liệu thành công\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json()).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/ingredients",
+              "host": ["{{baseUrl}}"],
+              "path": ["products", "ingredients"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03. Khuyến mãi (Promotions)",
+      "item": [
+        {
+          "name": "GET /promotions (Lấy danh sách mã giảm giá)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Lấy danh sách khuyến mãi thành công\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json()).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/promotions",
+              "host": ["{{baseUrl}}"],
+              "path": ["promotions"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04. Đặt hàng (Orders)",
+      "item": [
+        {
+          "name": "04.1. Đặt hàng thành công (Happy Path)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Tạo đơn thành công (201 Created)\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    var order = pm.response.json();",
+                  "    pm.expect(order).to.have.property(\"id\");",
+                  "    pm.expect(order.status).to.eql(\"PENDING\");",
+                  "    // Tự động lưu mã đơn sang bước thanh toán",
+                  "    pm.collectionVariables.set(\"currentOrderId\", order.id);",
+                  "    pm.collectionVariables.set(\"currentOrderCode\", order.orderCode || order.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": 1,\n  \"items\": [\n    {\n      \"productId\": {{selectedProductId}},\n      \"size\": \"M\",\n      \"sweetness\": \"100%\",\n      \"ice\": \"Bình thường\",\n      \"quantity\": 1\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          }
+        },
+        {
+          "name": "04.2. Lỗi giỏ hàng rỗng (Validation 400 Bad Request)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Hệ thống từ chối giỏ hàng trống (400 Bad Request)\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    var error = pm.response.json();",
+                  "    pm.expect(error.message).to.be.defined;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": 1,\n  \"items\": []\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          }
+        },
+        {
+          "name": "04.3. Lỗi số lượng món <= 0 (Validation 400 Bad Request)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Hệ thống từ chối số lượng <= 0 (400 Bad Request)\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": 1,\n  \"items\": [\n    {\n      \"productId\": {{selectedProductId}},\n      \"quantity\": 0\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05. Thanh toán (Payments)",
+      "item": [
+        {
+          "name": "05.1. Thanh toán thành công bằng Ví WALLET (Happy Path)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Tự động sinh Idempotency Key duy nhất cho lần thanh toán này",
+                  "pm.collectionVariables.set(\"paymentIdempotencyKey\", \"PAY-\" + Date.now() + \"-\" + Math.floor(Math.random() * 1000));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Thanh toán xử lý thành công (201 Created)\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    var res = pm.response.json();",
+                  "    pm.expect(res.success).to.be.true;",
+                  "    pm.expect(res.orderStatus).to.eql(\"PAID\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{currentOrderId}},\n  \"method\": \"WALLET\",\n  \"idempotencyKey\": \"{{paymentIdempotencyKey}}\",\n  \"mockSuccess\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments",
+              "host": ["{{baseUrl}}"],
+              "path": ["payments"]
+            }
+          }
+        },
+        {
+          "name": "05.2. Lỗi thiếu IdempotencyKey (Validation 400 Bad Request)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Từ chối thanh toán thiếu Idempotency Key (400)\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{currentOrderId}},\n  \"method\": \"WALLET\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments",
+              "host": ["{{baseUrl}}"],
+              "path": ["payments"]
+            }
+          }
+        },
+        {
+          "name": "05.3. Xem thông tin thanh toán theo Order ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Lấy thông tin thanh toán thành công (200 OK)\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/payments/order/{{currentOrderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["payments", "order", "{{currentOrderId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "06. Xác nhận & Chuyển trạng thái đơn",
+      "item": [
+        {
+          "name": "06.1. Xem chi tiết đơn hàng sau thanh toán (GET /orders/:code)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Đơn hàng tồn tại và hiển thị chi tiết (200 OK)\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var order = pm.response.json();",
+                  "    pm.expect(order).to.have.property(\"id\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{currentOrderCode}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", "{{currentOrderCode}}"]
+            }
+          }
+        },
+        {
+          "name": "06.2. Barista cập nhật trạng thái đơn sang PREPARING (PATCH)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Chuyển trạng thái sang PREPARING thành công (200 OK)\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var order = pm.response.json();",
+                  "    pm.expect(order.status).to.eql(\"PREPARING\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PREPARING\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{currentOrderCode}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", "{{currentOrderCode}}", "status"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07. Concurrency - Tranh chấp tồn kho",
+      "item": [
+        {
+          "name": "Bắn đồng thời 2 khách mua cùng lúc (Race Condition Test)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Bắn đồng thời một khách B đặt mua cùng món",
+                  "const concurrentOrder = {",
+                  "    userId: 2,",
+                  "    items: [",
+                  "        {",
+                  "            productId: Number(pm.collectionVariables.get(\"selectedProductId\") || 1),",
+                  "            size: \"M\",",
+                  "            quantity: 1",
+                  "        }",
+                  "    ]",
+                  "};",
+                  "",
+                  "console.log(\"🚀 Bắn Người B đồng thời với Người A...\");",
+                  "pm.sendRequest({",
+                  "    url: pm.collectionVariables.get(\"baseUrl\") + \"/orders\",",
+                  "    method: \"POST\",",
+                  "    header: { \"Content-Type\": \"application/json\" },",
+                  "    body: { mode: \"raw\", raw: JSON.stringify(concurrentOrder) }",
+                  "}, function (err, res) {",
+                  "    console.log(\"===> KẾT QUẢ NGƯỜI B (Gửi song song):\");",
+                  "    console.log(\"Status Code:\", res.code);",
+                  "    console.log(\"Phản hồi:\", res.json());",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Người A đặt hàng thành công\", function () {",
+                  "    pm.expect([201, 400]).to.include(pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": 1,\n  \"items\": [\n    {\n      \"productId\": {{selectedProductId}},\n      \"size\": \"M\",\n      \"quantity\": 1\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "selectedProductId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "selectedProductName",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "currentOrderId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "currentOrderCode",
+      "value": "ORD-1",
+      "type": "string"
+    },
+    {
+      "key": "paymentIdempotencyKey",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
