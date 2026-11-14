@@ -1,0 +1,38 @@
+@startuml
+title 3. Trả kết quả và thông báo cho khách hàng
+
+actor "Customer\n(Khách hàng)" as Customer
+participant "Next.js UI\n(Web/Mobile)" as UI
+participant "NestJS API\n(Backend)" as API
+database "Database\n(PostgreSQL)" as DB
+
+activate UI
+UI -> API: 20. Trả kết quả thanh toán & đơn hàng\n(orderId, orderStatus, paymentStatus, message)
+activate API
+
+API --> UI: 21. Hiển thị kết quả\n(thông báo + thông tin đơn hàng)
+deactivate API
+
+UI -> API: 22. GET /orders/{orderId}\n(Authorization: Bearer <token>)
+activate API
+
+API -> DB: 23. Truy vấn đơn hàng và thanh toán\n(orderId)
+activate DB
+DB --> API: 24. Trả dữ liệu đơn hàng và thanh toán\n(orderStatus, paymentStatus, ...)
+deactivate DB
+
+API --> UI: 25. Trả thông tin đơn hàng mới nhất\n(orderStatus, paymentStatus, ...)
+deactivate API
+
+UI -> UI: 26. Cập nhật giao diện cho người dùng\n(trạng thái đơn hàng, thanh toán)
+
+alt Thanh toán thành công
+    UI --> Customer: 27a. Trả kết quả thành công\n(status=PAID, paymentStatus=SUCCESS)
+    Customer -> Customer: 28a. Thông báo thành công\n- Hiển thị mã đơn hàng\n- Trạng thái: Đã thanh toán\n- Thông tin giao dịch (transactionId)
+else Thanh toán thất bại
+    UI --> Customer: 27b. Trả kết quả thất bại\n(status=PENDING_PAYMENT, paymentStatus=FAILED)
+    Customer -> Customer: 28b. Thông báo thất bại\n- Hiển thị mã đơn hàng\n- Trạng thái: Chưa thanh toán\n- Lý do thất bại (ví dụ: thẻ bị từ chối)\n- Hướng dẫn thử lại
+end
+
+deactivate UI
+@enduml
