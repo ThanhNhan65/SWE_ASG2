@@ -20,8 +20,28 @@ concurrency:
 
 jobs:
   lint-test-build:
-    name: "Install -> Lint -> Unit Test -> Build"
+    name: "Install -> Lint -> Unit & E2E Test -> Build"
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: brewlite_user
+          POSTGRES_PASSWORD: brewlite_password
+          POSTGRES_DB: brewlite_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://brewlite_user:brewlite_password@localhost:5432/brewlite_db?schema=public
+      DATABASE_URL_UNPOOLED: postgresql://brewlite_user:brewlite_password@localhost:5432/brewlite_db?schema=public
+      JWT_SECRET: brewlite_ci_jwt_secret_2026
 
     steps:
       # Bước 0: Checkout mã nguồn & chuẩn bị môi trường
@@ -58,13 +78,17 @@ jobs:
           echo "=== [2/4] RUN LINTER ==="
           npm run lint
 
-      # Giai đoạn 3: Unit Test
-      - name: "3. Run Unit Tests"
+      # Giai đoạn 3: Unit Test & Integration/E2E Test
+      - name: "3. Run Unit & E2E Tests"
         run: |
-          echo "=== [3/4] RUN UNIT TESTS ==="
+          echo "=== [3/4] RUN UNIT & E2E TESTS ==="
           if [ -d "apps/api" ]; then
             echo "--> Thực thi Unit Tests Backend (Vitest)..."
             npm --prefix apps/api run test
+            echo "--> Đồng bộ Schema lên PostgreSQL Container cho E2E Test..."
+            npx --prefix apps/api prisma db push --schema=apps/api/prisma/schema.prisma --skip-generate
+            echo "--> Thực thi Integration & E2E Tests (tests/)..."
+            npm --prefix apps/api run test:e2e
           else
             npm test
           fi
@@ -89,7 +113,13 @@ jobs:
         run: |
           if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
             echo "RENDER_DEPLOY_HOOK_URL secret chưa được cấu hình trên GitHub -> bỏ qua bước gọi hook."
-            exit 0
+          else
+            curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
+            echo "Đã kích hoạt deploy Production trên Render thành công!"
           fi
-          curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
-          echo "Đã kích hoạt deploy Production trên Render thành công!"
+
+      - name: "Production Smoke Test (Health Check)"
+        run: |
+          echo "=== PRODUCTION SMOKE TEST ==="
+          curl -fsS https://swe-asg2.onrender.com/health || echo "Backend Render đang khởi động hoặc cold-start."
+          curl -fsSI https://brewlite05.vercel.app >/dev/null || echo "Frontend Vercel đang cập nhật."

@@ -9,7 +9,7 @@
     "dev:web": "npm --prefix apps/web run dev",
     "build": "npm --prefix apps/api run build && npm --prefix apps/web run build",
     "test": "npm --prefix apps/api run test",
-    "test:e2e": "vitest run --config vitest.config.e2e.ts",
+    "test:e2e": "npm --prefix apps/api run test:e2e",
     "lint": "npm --prefix apps/api run lint && npm --prefix apps/web run lint",
     "db:push": "npm --prefix apps/api run db:push",
     "db:seed": "npm --prefix apps/api run db:seed",
