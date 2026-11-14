@@ -1,12 +1,21 @@
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module.js';
 
 if (typeof process.loadEnvFile === 'function') {
-  try {
-    process.loadEnvFile();
-  } catch {
-    // Bỏ qua nếu chạy qua biến môi trường hệ thống / Docker
+  for (const envPath of [
+    resolve(process.cwd(), '.env'),
+    resolve(process.cwd(), '../../.env'),
+  ]) {
+    if (existsSync(envPath)) {
+      try {
+        process.loadEnvFile(envPath);
+      } catch {
+        // Bỏ qua nếu chạy qua biến môi trường hệ thống / Docker
+      }
+    }
   }
 }
 

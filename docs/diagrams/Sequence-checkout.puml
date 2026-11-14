@@ -1,0 +1,31 @@
+@startuml
+title 1. Đăng nhập & tạo đơn hàng
+
+actor "Customer\n(Khách hàng)" as Customer
+participant "Next.js UI\n(Web/Mobile)" as UI
+participant "NestJS API\n(Backend)" as API
+database "Database\n(PostgreSQL)" as DB
+
+Customer -> UI: 1. Đăng nhập
+activate UI
+UI -> API: 2. POST /auth/login (username, password)
+activate API
+API --> UI: 3. Response (JWT)
+deactivate API
+
+Customer -> UI: 4. Gửi yêu cầu đặt hàng
+UI -> API: 5. POST /orders\n(dữ liệu đơn hàng + JWT)
+activate API
+
+API -> API: 6. Kiểm tra JWT + validate dữ liệu\n(đơn hàng, giỏ hàng, địa chỉ...)
+API -> DB: 7. BEGIN TRANSACTION
+activate DB
+API -> DB: 8. Tạo orders + order_items
+API -> DB: 9. Kiểm tra tồn kho (inventory)
+DB --> API: 10. COMMIT / ROLLBACK
+deactivate DB
+
+API --> UI: 11. Response: orderId, thông tin đơn
+deactivate API
+deactivate UI
+@enduml
