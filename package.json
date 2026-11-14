@@ -9,6 +9,7 @@
     "dev:web": "npm --prefix apps/web run dev",
     "build": "npm --prefix apps/api run build && npm --prefix apps/web run build",
     "test": "npm --prefix apps/api run test",
+    "test:e2e": "vitest run --config vitest.config.e2e.ts",
     "lint": "npm --prefix apps/api run lint && npm --prefix apps/web run lint",
     "db:push": "npm --prefix apps/api run db:push",
     "db:seed": "npm --prefix apps/api run db:seed",
@@ -25,5 +26,13 @@
     "docker"
   ],
   "author": "ThanhNhan65",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "@nestjs/common": "^12.5.0",
+    "@nestjs/core": "^12.5.0",
+    "@nestjs/platform-express": "^12.5.0",
+    "@nestjs/testing": "^12.5.0",
+    "supertest": "^7.3.2",
+    "vitest": "^5.1.0"
+  }
 }
