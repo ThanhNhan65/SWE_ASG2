@@ -323,8 +323,9 @@
                 "exec": [
                   "pm.test(\"Thanh toán xử lý thành công (201 Created)\", function () {",
                   "    pm.response.to.have.status(201);",
-                  "    var payment = pm.response.json();",
-                  "    pm.expect(payment).to.have.property(\"status\");",
+                  "    var res = pm.response.json();",
+                  "    pm.expect(res.success).to.be.true;",
+                  "    pm.expect(res.orderStatus).to.eql(\"PAID\");",
                   "});"
                 ],
                 "type": "text/javascript"
