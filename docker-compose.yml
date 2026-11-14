@@ -1,4 +1,7 @@
+version: '3.8'
+
 services:
+  # 1. Cơ sở dữ liệu PostgreSQL
   postgres:
     image: postgres:16-alpine
     container_name: brewlite-postgres
@@ -16,6 +19,39 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # 2. Backend API (NestJS)
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: brewlite-api
+    restart: always
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-brewlite_user}:${POSTGRES_PASSWORD:-brewlite_password}@postgres:5432/${POSTGRES_DB:-brewlite_db}?schema=public
+      DATABASE_URL_UNPOOLED: postgresql://${POSTGRES_USER:-brewlite_user}:${POSTGRES_PASSWORD:-brewlite_password}@postgres:5432/${POSTGRES_DB:-brewlite_db}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-brewlite_super_secret_jwt_key_2026}
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # 3. Frontend Web Client (Next.js PWA)
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: brewlite-web
+    restart: always
+    environment:
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
 
 volumes:
   postgres_data:

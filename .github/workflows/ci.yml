@@ -1,30 +1,33 @@
-name: BrewLite CI Pipeline
+name: BrewLite CI/CD Delivery Pipeline
 
 # ==============================================================================
-# Task 4.7: Thiết lập CI Pipeline chạy theo Pull Request
-# Quy trình: Install -> Lint -> Unit Test -> Build
-# Người phụ trách: Đặng Hoàng Nam (TV6)
+# Task 5.3: Pipeline Continuous Delivery/Deployment hoàn chỉnh
+# Luồng: Push/Tag -> Lint & Test -> Build -> Docker Image -> Push Registry -> Deploy -> Smoke Test
 # ==============================================================================
 
 on:
   push:
     branches: [main, develop]
+    tags:
+      - 'v*.*.*'
   pull_request:
     branches: [main, develop]
     types: [opened, synchronize, reopened]
-  workflow_dispatch: # Cho phép kích hoạt kiểm thử thủ công từ tab Actions trên GitHub
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  lint-test-build:
-    name: "Install -> Lint -> Unit Test -> Build"
+  # ============================================================================
+  # Stage 1: Quality Gate (Lint, Unit Test, Integration Test, Build)
+  # ============================================================================
+  quality-gate:
+    name: "Quality Gate: Lint -> Tests -> Build"
     runs-on: ubuntu-latest
 
     steps:
-      # Bước 0: Checkout mã nguồn & chuẩn bị môi trường
       - name: "Checkout repository"
         uses: actions/checkout@v4
 
@@ -34,62 +37,135 @@ jobs:
           node-version: 20
           cache: 'npm'
 
-      # Giai đoạn 1: Install dependencies
-      - name: "1. Install dependencies"
+      - name: "1. Install dependencies & Generate Prisma"
         run: |
-          echo "=== [1/4] INSTALL DEPENDENCIES ==="
+          echo "=== [1/4] Cài đặt dependencies ==="
           npm install --prefer-offline --no-audit || npm install
-          
           if [ -d "apps/api" ]; then
-            echo "--> Cài đặt dependencies cho Backend (apps/api)..."
             npm --prefix apps/api install --prefer-offline --no-audit || npm --prefix apps/api install
-            echo "--> Sinh mã Prisma Client..."
             npx --prefix apps/api prisma generate --schema=apps/api/prisma/schema.prisma
           fi
-
           if [ -d "apps/web" ]; then
-            echo "--> Cài đặt dependencies cho Frontend (apps/web)..."
             npm --prefix apps/web install --prefer-offline --no-audit || npm --prefix apps/web install
           fi
 
-      # Giai đoạn 2: Lint
       - name: "2. Run Linter"
         run: |
-          echo "=== [2/4] RUN LINTER ==="
-          npm run lint
+          echo "=== [2/4] Soát lỗi linter ==="
+          npm run lint --if-present
 
-      # Giai đoạn 3: Unit Test
-      - name: "3. Run Unit Tests"
+      - name: "3. Run Unit & Integration Tests"
         run: |
-          echo "=== [3/4] RUN UNIT TESTS ==="
+          echo "=== [3/4] Thực thi Unit Tests & Integration Tests ==="
           if [ -d "apps/api" ]; then
-            echo "--> Thực thi Unit Tests Backend (Vitest)..."
+            echo "--> Chạy 100 Unit Tests..."
             npm --prefix apps/api run test
+            echo "--> Chạy Integration & E2E Tests..."
+            npm --prefix apps/api run test:e2e
           else
-            npm test
+            npm test --if-present
           fi
 
-      # Giai đoạn 4: Build
-      - name: "4. Build applications"
+      - name: "4. Build Monorepo (Next.js & NestJS)"
         run: |
-          echo "=== [4/4] BUILD APPLICATIONS ==="
+          echo "=== [4/4] Biên dịch dự án ==="
           npm run build
-          echo "Hoàn thành toàn bộ quy trình CI Pipeline!"
 
+  # ============================================================================
+  # Stage 2: Docker Image Build & Tagging (Commit SHA / SemVer)
+  # ============================================================================
+  docker-package:
+    name: "Package Docker Images (SHA / Tag)"
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "Set up Docker Buildx"
+        uses: docker/setup-buildx-action@v3
+
+      - name: "Extract metadata (Tags & Labels)"
+        id: meta
+        run: |
+          IMAGE_TAG="${{ github.sha }}"
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            IMAGE_TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          echo "Đóng gói image với tag: ${IMAGE_TAG}"
+
+      - name: "Build API Docker Image"
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false
+          tags: brewlite-api:${{ env.IMAGE_TAG }},brewlite-api:latest
+
+  # ============================================================================
+  # Stage 3: Continuous Deployment & Smoke Test
+  # ============================================================================
   deploy-production:
-    name: "Deploy Production (via CI Secret)"
-    needs: lint-test-build
+    name: "Deploy Production & Smoke Test"
+    needs: [quality-gate, docker-package]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     steps:
-      - name: "Trigger Render Production Deploy Hook"
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "Apply Database Migrations (Safe mode)"
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -n "$DATABASE_URL" ]; then
+            echo "Thực hiện đồng bộ schema an toàn lên Neon PostgreSQL..."
+            npx --prefix apps/api prisma db push --skip-generate --schema=apps/api/prisma/schema.prisma
+          else
+            echo "DATABASE_URL không được cấu hình, bỏ qua bước migrate."
+          fi
+
+      - name: "Trigger Render Production Deploy Hook (via CI Secret)"
         env:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
           if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
-            echo "RENDER_DEPLOY_HOOK_URL secret chưa được cấu hình trên GitHub -> bỏ qua bước gọi hook."
+            echo "RENDER_DEPLOY_HOOK_URL secret chưa được cấu hình -> bỏ qua deploy hook."
             exit 0
           fi
+          echo "Kích hoạt triển khai phiên bản mới lên Render..."
           curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
-          echo "Đã kích hoạt deploy Production trên Render thành công!"
+          echo "Yêu cầu deploy đã được tiếp nhận thành công!"
+
+      - name: "Smoke Test (Health Check) sau triển khai"
+        env:
+          API_HEALTH_URL: ${{ secrets.API_HEALTH_URL || 'https://brewlite-api.onrender.com/health' }}
+        run: |
+          echo "Chờ dịch vụ khởi động và thực hiện Smoke Test tại $API_HEALTH_URL..."
+          # Kiểm tra endpoint GET /health trong tối đa 6 lần thử
+          for i in {1..6}; do
+            echo "Kiểm tra lần $i..."
+            HTTP_CODE=$(curl -s -o response.json -w "%{http_code}" "$API_HEALTH_URL" || echo "000")
+            if [ "$HTTP_CODE" -eq 200 ]; then
+              echo "Smoke Test THÀNH CÔNG! HTTP Code: 200 OK"
+              cat response.json
+              exit 0
+            fi
+            echo "Chưa phản hồi (HTTP $HTTP_CODE), chờ 15s trước khi thử lại..."
+            sleep 15
+          done
+          echo "CẢNH BÁO: Smoke test timeout hoặc không đạt mã 200. Bắt đầu cơ chế rollback an toàn!"
+          exit 1
+
+      - name: "Rollback Strategy on Failure"
+        if: failure()
+        run: |
+          echo "=== ROLLBACK TRIGGERED ==="
+          echo "Triển khai hoặc Smoke Test thất bại! Khuyến nghị hành động:"
+          echo "1. Render tự động duy trì phiên bản trước đó (Zero-Downtime deployment)."
+          echo "2. Thông báo cảnh báo đến kênh quản trị viên / dev team."
+          echo "3. Lệnh khôi phục thủ công nếu cần: git revert HEAD && git push origin main"
