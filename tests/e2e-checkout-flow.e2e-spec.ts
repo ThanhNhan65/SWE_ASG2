@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ProductsController } from '../src/products/products.controller.js';
-import { ProductsService } from '../src/products/products.service.js';
-import { OrdersController } from '../src/orders/orders.controller.js';
-import { OrdersService } from '../src/orders/orders.service.js';
-import { OrderStateMachine, OrderStatus } from '../src/orders/order-state-machine.js';
-import { PaymentsController } from '../src/payments/payments.controller.js';
-import { PaymentsService } from '../src/payments/payments.service.js';
+import { ProductsController } from '../apps/api/src/products/products.controller.js';
+import { ProductsService } from '../apps/api/src/products/products.service.js';
+import { OrdersController } from '../apps/api/src/orders/orders.controller.js';
+import { OrdersService } from '../apps/api/src/orders/orders.service.js';
+import { OrderStateMachine, OrderStatus } from '../apps/api/src/orders/order-state-machine.js';
+import { PaymentsController } from '../apps/api/src/payments/payments.controller.js';
+import { PaymentsService } from '../apps/api/src/payments/payments.service.js';
 import { PaymentMethod, PaymentStatus } from '@prisma/client';
-import { ProductSize } from '../src/orders/dto/create-order.dto.js';
+import { ProductSize } from '../apps/api/src/orders/dto/create-order.dto.js';
 
 describe('E2E Flow Test: Luồng nghiệp vụ trọn vẹn từ Menu đến Xác nhận đơn hàng (Task 5.2)', () => {
   let productsController: ProductsController;
@@ -112,7 +112,7 @@ describe('E2E Flow Test: Luồng nghiệp vụ trọn vẹn từ Menu đến Xá
           return record;
         }),
       },
-      $transaction: vi.fn(async (cb) => cb(mockPrisma)),
+      $transaction: vi.fn(async (cb: any) => cb(mockPrisma)),
     };
 
     // Services
