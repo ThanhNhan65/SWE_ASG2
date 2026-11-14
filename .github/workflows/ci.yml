@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   lint-test-build:
-    name: "Install -> Lint -> Unit & E2E Test -> Build"
+    name: "Install -> Lint -> Unit Test -> Build"
     runs-on: ubuntu-latest
 
     services:
