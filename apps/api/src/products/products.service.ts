@@ -89,12 +89,11 @@ export class ProductsService {
   }
 
   /**
-   * Lấy danh sách Topping đi kèm cho thực đơn
+   * Lấy danh sách Topping đi kèm cho thực đơn (bao gồm cả món tạm hết hàng)
    */
   async getToppings() {
     try {
       return await this.prisma.topping.findMany({
-        where: { isAvailable: true },
         orderBy: { id: 'asc' },
       });
     } catch (error) {
