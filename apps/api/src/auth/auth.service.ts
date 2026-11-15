@@ -2,6 +2,8 @@ import {
   ConflictException,
   Injectable,
   InternalServerErrorException,
+  Logger,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -10,21 +12,48 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 
+interface AuthUserRecord {
+  id: number;
+  email: string;
+  fullName: string | null;
+  passwordHash: string;
+  loyaltyPoints: number;
+  createdAt: Date;
+}
+
 @Injectable()
 export class AuthService {
-  private readonly inMemoryUsersByEmail = new Map<string, any>();
-  private readonly inMemoryUsersById = new Map<number, any>();
-  private nextUserId = 1;
+  private readonly logger = new Logger(AuthService.name);
+  private readonly inMemoryUsersByEmail = new Map<string, AuthUserRecord>();
+  private readonly inMemoryUsersById = new Map<number, AuthUserRecord>();
+  private nextUserId = 100000;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
   ) {}
 
+  private async ensureDbConnection(): Promise<boolean> {
+    if (this.prisma?.isConnected) {
+      return true;
+    }
+    if (typeof this.prisma?.ensureConnected === 'function') {
+      return this.prisma.ensureConnected();
+    }
+    return false;
+  }
+
   async register(dto: RegisterDto) {
     const normalizedEmail = dto.email.trim().toLowerCase();
+    const dbReady = await this.ensureDbConnection();
 
-    if (this.prisma?.isConnected) {
+    if (process.env.DATABASE_URL && !dbReady) {
+      throw new ServiceUnavailableException(
+        'Hệ thống cơ sở dữ liệu đang khởi động, vui lòng thử lại sau vài giây.',
+      );
+    }
+
+    if (dbReady) {
       try {
         const existingUser = await this.prisma.user.findUnique({
           where: { email: normalizedEmail },
@@ -58,8 +87,13 @@ export class AuthService {
           message: 'Đăng ký tài khoản thành công',
           user,
         };
-      } catch (error: any) {
+      } catch (error: unknown) {
         if (error instanceof ConflictException) throw error;
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Lỗi đăng ký tài khoản vào DB: ${message}`);
+        throw new InternalServerErrorException(
+          'Không thể lưu tài khoản vào cơ sở dữ liệu. Vui lòng thử lại.',
+        );
       }
     }
 
@@ -71,7 +105,7 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(dto.password, saltRounds);
     const userId = this.nextUserId++;
 
-    const user = {
+    const user: AuthUserRecord = {
       id: userId,
       email: normalizedEmail,
       fullName: dto.fullName?.trim() || null,
@@ -99,21 +133,30 @@ export class AuthService {
   async login(dto: LoginDto) {
     const normalizedEmail = dto.email.trim().toLowerCase();
     const invalidCredentialsMsg = 'Email hoặc mật khẩu không chính xác';
+    const dbReady = await this.ensureDbConnection();
 
-    let user: any = null;
+    if (process.env.DATABASE_URL && !dbReady) {
+      throw new ServiceUnavailableException(
+        'Hệ thống cơ sở dữ liệu đang khởi động, vui lòng thử lại sau vài giây.',
+      );
+    }
 
-    if (this.prisma?.isConnected) {
+    let user: AuthUserRecord | null = null;
+
+    if (dbReady) {
       try {
         user = await this.prisma.user.findUnique({
           where: { email: normalizedEmail },
         });
-      } catch {
-        user = null;
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Lỗi truy vấn đăng nhập DB: ${message}`);
+        throw new ServiceUnavailableException(
+          'Không thể kết nối cơ sở dữ liệu để đăng nhập. Vui lòng thử lại.',
+        );
       }
-    }
-
-    if (!user) {
-      user = this.inMemoryUsersByEmail.get(normalizedEmail);
+    } else {
+      user = this.inMemoryUsersByEmail.get(normalizedEmail) ?? null;
     }
 
     if (!user) {
@@ -147,8 +190,15 @@ export class AuthService {
 
   async getProfile(userId: number | string) {
     const numericId = Number(userId);
+    const dbReady = await this.ensureDbConnection();
 
-    if (this.prisma?.isConnected) {
+    if (process.env.DATABASE_URL && !dbReady) {
+      throw new ServiceUnavailableException(
+        'Hệ thống cơ sở dữ liệu đang khởi động, vui lòng thử lại sau vài giây.',
+      );
+    }
+
+    if (dbReady) {
       try {
         const user = await this.prisma.user.findUnique({
           where: { id: numericId },
@@ -161,8 +211,17 @@ export class AuthService {
             updatedAt: true,
           },
         });
-        if (user) return user;
-      } catch {
+        if (!user) {
+          throw new UnauthorizedException('Người dùng không tồn tại');
+        }
+        return user;
+      } catch (error: unknown) {
+        if (error instanceof UnauthorizedException) throw error;
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Lỗi lấy thông tin người dùng DB: ${message}`);
+        throw new ServiceUnavailableException(
+          'Không thể kết nối cơ sở dữ liệu. Vui lòng thử lại.',
+        );
       }
     }
 

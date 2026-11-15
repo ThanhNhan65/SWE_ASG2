@@ -20,6 +20,8 @@ import { PrismaService } from '../prisma/prisma.service.js';
 interface JwtUserPayload {
   id?: number | string;
   userId?: number | string;
+  email?: string;
+  loyaltyPoints?: number;
 }
 
 @Controller('promotions')
@@ -93,6 +95,7 @@ export class PromotionsController {
   @UseGuards(JwtAuthGuard)
   async getMyLoyaltySummary(@CurrentUser() user: JwtUserPayload): Promise<{
     userId: number;
+    email: string | null;
     points: number;
     pointValueInVnd: number;
     equivalentDiscountVnd: number;
@@ -108,9 +111,20 @@ export class PromotionsController {
       select: { id: true, email: true, fullName: true, loyaltyPoints: true },
     });
 
-    const points = dbUser?.loyaltyPoints ?? 0;
+    if (
+      dbUser &&
+      user?.email &&
+      dbUser.email.toLowerCase() !== user.email.toLowerCase()
+    ) {
+      throw new UnauthorizedException(
+        'Phiên đăng nhập không khớp với tài khoản, vui lòng đăng nhập lại',
+      );
+    }
+
+    const points = dbUser ? dbUser.loyaltyPoints : Number(user?.loyaltyPoints ?? 0);
     return {
       userId,
+      email: dbUser?.email ?? user?.email ?? null,
       points,
       pointValueInVnd: LOYALTY_CONSTANTS.POINT_VALUE_IN_VND,
       equivalentDiscountVnd: points * LOYALTY_CONSTANTS.POINT_VALUE_IN_VND,

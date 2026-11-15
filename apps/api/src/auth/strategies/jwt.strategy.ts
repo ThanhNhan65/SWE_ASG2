@@ -1,7 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { PrismaService } from '../../prisma/prisma.service.js';
 import { AuthService } from '../auth.service.js';
 
 export interface JwtPayload {
@@ -12,7 +11,6 @@ export interface JwtPayload {
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor(
-    private readonly prisma: PrismaService,
     private readonly authService: AuthService,
   ) {
     super({
@@ -23,27 +21,19 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   }
 
   async validate(payload: JwtPayload) {
-    try {
-      if (this.prisma?.isConnected) {
-        const user = await this.prisma.user.findUnique({
-          where: { id: payload.sub },
-          select: {
-            id: true,
-            email: true,
-            fullName: true,
-            loyaltyPoints: true,
-            createdAt: true,
-          },
-        });
-
-        if (user) return user;
-      }
-    } catch {
-    }
-
     const user = await this.authService.getProfile(payload.sub);
     if (!user) {
       throw new UnauthorizedException('Tài khoản không tồn tại hoặc phiên đăng nhập đã hết hạn');
+    }
+
+    if (
+      payload.email &&
+      user.email &&
+      user.email.toLowerCase() !== payload.email.toLowerCase()
+    ) {
+      throw new UnauthorizedException(
+        'Phiên đăng nhập không khớp với tài khoản, vui lòng đăng nhập lại',
+      );
     }
 
     return user;

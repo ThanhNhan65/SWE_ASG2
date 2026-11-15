@@ -5,6 +5,10 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
+import {
+  calculateAvailableCupsByIngredients,
+  isProductAvailableByIngredients,
+} from './sugar-ice.calculator.js';
 
 export interface ProductFilterDto {
   isAvailable?: boolean;
@@ -15,10 +19,53 @@ export interface ProductFilterDto {
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
 
+  // Danh sách nguyên liệu trong bộ nhớ (In-memory fallback & đồng bộ DB giống DOAN_SWE)
+  private static inMemoryIngredients = [
+    { code: 'SUGAR', name: 'Đường cát tinh luyện', stock: 20000, unit: 'g', minThreshold: 1000 },
+    { code: 'ICE', name: 'Đá viên tinh khiết', stock: 50000, unit: 'g', minThreshold: 2000 },
+    { code: 'COFFEE_BEANS', name: 'Hạt cà phê Robusta rang mộc', stock: 5000, unit: 'g', minThreshold: 500 },
+    { code: 'TEA_LEAVES', name: 'Lá trà Oolong & Trà đen khô', stock: 3000, unit: 'g', minThreshold: 300 },
+    { code: 'MILK', name: 'Sữa tươi & Sữa đặc pha chế', stock: 10000, unit: 'ml', minThreshold: 1000 },
+  ];
+
+  static getInMemoryIngredientStock(code: string): number {
+    const ing = ProductsService.inMemoryIngredients.find((i) => i.code === code);
+    return ing ? ing.stock : 999999;
+  }
+
+  /**
+   * Kiểm tra một sản phẩm có đủ nguyên liệu tối thiểu (Size S) để bán hay không
+   */
+  static isProductAvailableByStock(
+    productName: string,
+    coffeeStock: number,
+    teaStock: number,
+    milkStock: number = 999999,
+  ): boolean {
+    return isProductAvailableByIngredients(productName, coffeeStock, teaStock, milkStock);
+  }
+
+  /**
+   * Tính toán số ly tồn kho tối đa của một sản phẩm từ lượng nguyên liệu thô theo công thức Recipe chuẩn
+   */
+  static calculateProductStock(
+    productName: string,
+    coffeeStock: number,
+    teaStock: number,
+    milkStock: number = 999999,
+    size: 'S' | 'M' | 'L' = 'S',
+  ): number {
+    return calculateAvailableCupsByIngredients(
+      productName,
+      { coffee: coffeeStock, tea: teaStock, milk: milkStock },
+      size,
+    );
+  }
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Lấy danh sách sản phẩm thực đơn (hỗ trợ lọc trạng thái và tìm kiếm)
+   * Lấy danh sách sản phẩm thực đơn (hỗ trợ lọc trạng thái, tìm kiếm và tính stock động theo nguyên liệu)
    */
   async findAll(filter?: ProductFilterDto) {
     try {
@@ -43,6 +90,68 @@ export class ProductsService {
         orderBy: { id: 'asc' },
       });
 
+      if (!products || products.length === 0) {
+        return [];
+      }
+
+      // Lấy tồn kho nguyên liệu cốt để tính toán số ly thực tế theo công thức
+      let coffeeStock = ProductsService.getInMemoryIngredientStock('COFFEE_BEANS');
+      let teaStock = ProductsService.getInMemoryIngredientStock('TEA_LEAVES');
+      let milkStock = ProductsService.getInMemoryIngredientStock('MILK');
+      let isDbIngredientsAvailable = false;
+
+      try {
+        const prismaWithIng = this.prisma as unknown as {
+          ingredient?: {
+            findMany?: () => Promise<Array<{ code: string; stock: number }>>;
+          };
+        };
+        if (prismaWithIng?.ingredient?.findMany) {
+          const ingList = await prismaWithIng.ingredient.findMany();
+          if (Array.isArray(ingList) && ingList.length > 0) {
+            isDbIngredientsAvailable = true;
+            const ingMap = new Map(ingList.map((i) => [i.code, i.stock]));
+            if (ingMap.has('COFFEE_BEANS')) coffeeStock = ingMap.get('COFFEE_BEANS')!;
+            if (ingMap.has('TEA_LEAVES')) teaStock = ingMap.get('TEA_LEAVES')!;
+            if (ingMap.has('MILK')) milkStock = ingMap.get('MILK')!;
+          }
+        }
+      } catch {
+        // Fallback in-memory
+      }
+
+      for (const p of products) {
+        const computedCups = ProductsService.calculateProductStock(
+          p.name,
+          coffeeStock,
+          teaStock,
+          milkStock,
+          'S',
+        );
+        const hasBaseIngredient = computedCups > 0;
+        const newStock = isDbIngredientsAvailable ? computedCups : (p.stock ?? computedCups);
+        const newIsAvailable = p.isAvailable && hasBaseIngredient;
+
+        // Tự động đồng bộ ngược lại vào bảng products trong DB nếu bạn vừa sửa bảng ingredients
+        if (
+          typeof this.prisma.product?.update === 'function' &&
+          isDbIngredientsAvailable &&
+          (p.stock !== newStock || p.isAvailable !== newIsAvailable)
+        ) {
+          try {
+            await this.prisma.product.update({
+              where: { id: p.id },
+              data: { stock: newStock, isAvailable: newIsAvailable },
+            });
+          } catch {
+            // Bỏ qua nếu môi trường test không hỗ trợ update
+          }
+        }
+
+        p.stock = newStock;
+        p.isAvailable = newIsAvailable;
+      }
+
       return products;
     } catch (error) {
       this.logger.error(
@@ -53,7 +162,7 @@ export class ProductsService {
   }
 
   /**
-   * Lấy chi tiết một sản phẩm theo ID
+   * Lấy chi tiết một sản phẩm theo ID kèm số ly tính toán theo nguyên liệu
    */
   async findById(id: number) {
     if (!id || isNaN(id) || id <= 0) {
@@ -69,7 +178,63 @@ export class ProductsService {
         throw new NotFoundException(`Không tìm thấy sản phẩm với ID: ${id}`);
       }
 
-      return product;
+      let coffeeStock = ProductsService.getInMemoryIngredientStock('COFFEE_BEANS');
+      let teaStock = ProductsService.getInMemoryIngredientStock('TEA_LEAVES');
+      let milkStock = ProductsService.getInMemoryIngredientStock('MILK');
+      let isDbIngredientsAvailable = false;
+
+      try {
+        const prismaWithIng = this.prisma as unknown as {
+          ingredient?: {
+            findMany?: () => Promise<Array<{ code: string; stock: number }>>;
+          };
+        };
+        if (prismaWithIng?.ingredient?.findMany) {
+          const ingList = await prismaWithIng.ingredient.findMany();
+          if (Array.isArray(ingList) && ingList.length > 0) {
+            isDbIngredientsAvailable = true;
+            const ingMap = new Map(ingList.map((i) => [i.code, i.stock]));
+            if (ingMap.has('COFFEE_BEANS')) coffeeStock = ingMap.get('COFFEE_BEANS')!;
+            if (ingMap.has('TEA_LEAVES')) teaStock = ingMap.get('TEA_LEAVES')!;
+            if (ingMap.has('MILK')) milkStock = ingMap.get('MILK')!;
+          }
+        }
+      } catch {
+        // Fallback in-memory
+      }
+
+      const computedCups = ProductsService.calculateProductStock(
+        product.name,
+        coffeeStock,
+        teaStock,
+        milkStock,
+        'S',
+      );
+
+      const newStock = isDbIngredientsAvailable ? computedCups : (product.stock ?? computedCups);
+      const newIsAvailable = product.isAvailable && computedCups > 0;
+
+      // Tự động đồng bộ ngược lại vào bảng products trong DB nếu có chênh lệch
+      if (
+        typeof this.prisma.product?.update === 'function' &&
+        isDbIngredientsAvailable &&
+        (product.stock !== newStock || product.isAvailable !== newIsAvailable)
+      ) {
+        try {
+          await this.prisma.product.update({
+            where: { id: product.id },
+            data: { stock: newStock, isAvailable: newIsAvailable },
+          });
+        } catch {
+          // Bỏ qua lỗi
+        }
+      }
+
+      return {
+        ...product,
+        stock: newStock,
+        isAvailable: newIsAvailable,
+      };
     } catch (error) {
       if (error instanceof BadRequestException || error instanceof NotFoundException) {
         throw error;
