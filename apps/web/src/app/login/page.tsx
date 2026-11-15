@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Coffee, AlertCircle } from 'lucide-react';
 import { saveAuthData } from '@/lib/auth';
+import { useCartStore } from '@/store/useCartStore';
 
 function LoginForm() {
   const router = useRouter();
@@ -75,6 +76,7 @@ function LoginForm() {
 
       if (data.accessToken && data.user) {
         saveAuthData(data.accessToken, data.user);
+        void useCartStore.persist.rehydrate();
       }
 
       router.push(redirectUrl);

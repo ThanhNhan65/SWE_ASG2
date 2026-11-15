@@ -164,6 +164,69 @@ export function getRecipeItem(
 }
 
 /**
+ * Công thức tính số ly tồn kho tối đa (stock) có thể pha chế được của một sản phẩm
+ * dựa trên lượng nguyên liệu thô hiện có trong kho và định mức công thức chuẩn (Recipe Standard).
+ *
+ * Công thức toán học:
+ *   Stock = min(
+ *     recipe.coffee > 0 ? floor(coffeeStock / recipe.coffee) : Infinity,
+ *     recipe.tea > 0 ? floor(teaStock / recipe.tea) : Infinity,
+ *     recipe.milk > 0 ? floor(milkStock / recipe.milk) : Infinity
+ *   )
+ *
+ * @param nameOrId Tên hoặc ID sản phẩm
+ * @param ingredientStock Tồn kho nguyên liệu (coffee: gram, tea: gram, milk: ml)
+ * @param size Kích cỡ dùng để đối chiếu (mặc định Size S - kích thước tối thiểu để một ly có thể được pha)
+ */
+export function calculateAvailableCupsByIngredients(
+  nameOrId: string | number | null | undefined,
+  ingredientStock: {
+    coffee?: number;
+    tea?: number;
+    milk?: number;
+  },
+  size: 'S' | 'M' | 'L' = 'S',
+): number {
+  const recipe = getRecipeItem(nameOrId, size);
+  const coffee = ingredientStock.coffee ?? 0;
+  const tea = ingredientStock.tea ?? 0;
+  const milk = ingredientStock.milk ?? 0;
+
+  const limits: number[] = [];
+
+  if (recipe.coffee > 0) {
+    limits.push(Math.floor(coffee / recipe.coffee));
+  }
+  if (recipe.tea > 0) {
+    limits.push(Math.floor(tea / recipe.tea));
+  }
+  if (recipe.milk > 0) {
+    limits.push(Math.floor(milk / recipe.milk));
+  }
+
+  // Nếu món không yêu cầu nguyên liệu cốt định mức (món đặc biệt hoặc đóng chai)
+  if (limits.length === 0) return 999;
+
+  return Math.max(0, Math.min(...limits));
+}
+
+/**
+ * Kiểm tra một sản phẩm có đủ nguyên liệu tối thiểu (Size S) để phục vụ hay không
+ */
+export function isProductAvailableByIngredients(
+  productName: string,
+  coffeeStock: number,
+  teaStock: number,
+  milkStock: number = 999999,
+): boolean {
+  return calculateAvailableCupsByIngredients(
+    productName,
+    { coffee: coffeeStock, tea: teaStock, milk: milkStock },
+    'S',
+  ) > 0;
+}
+
+/**
  * Tính toán tổng lượng tiêu thụ: Đường, Đá, Hạt cà phê, Lá trà và Sữa
  */
 export function calculateSugarAndIceConsumption(

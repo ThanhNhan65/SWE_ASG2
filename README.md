@@ -128,51 +128,54 @@ Dự án được quản lý theo mô hình Agile/Scrum qua hai Sprint:
 - **Sprint 1 (Task 4)**: Xây dựng nền tảng kỹ thuật, đặc tả tài liệu (Task 1-3), MVP luồng xem menu và thiết lập CI tự động.
 - **Sprint 2 (Task 5)**: Hoàn thiện luồng đặt hàng end-to-end, thanh toán, kiểm thử tích hợp/E2E, CD tự động và triển khai lên Production.
 
-
 ---
 
-## 6. Hướng dẫn Khởi chạy và Triển khai (Local, Test & Production)
+## 6. Hướng dẫn Chạy Dự án, Kiểm thử & Môi trường Production
 
-### 6.1. Khởi chạy Cục bộ với Docker Compose (Web + API + DB)
-Chỉ với một câu lệnh duy nhất, hệ thống sẽ khởi tạo toàn bộ hạ tầng gồm PostgreSQL, Backend NestJS API và Frontend Next.js PWA:
+### 6.1. Môi trường Production (Live)
+
+- **Frontend Web App (Vercel):** https://brewlite05.vercel.app
+- **Backend API (Render):** https://swe-asg2.onrender.com
+- **API Health Check:** https://swe-asg2.onrender.com/health
+- **Database:** Neon Serverless PostgreSQL (`brewlite_db`)
+
+### 6.2. Chạy nhanh bằng Docker Compose (Local)
+
 ```bash
-# 1. Chuẩn bị file biến môi trường
+# 1. Chuẩn bị biến môi trường
 cp .env.example .env
 
-# 2. Khởi chạy toàn bộ hệ thống
+# 2. Khởi chạy toàn bộ hệ thống (Postgres, API, Web)
 docker compose up --build -d
 
-# 3. Kiểm tra trạng thái các container
+# 3. Kiểm tra container
 docker compose ps
 
-# 4. Kiểm tra sức khỏe hệ thống (Health Check)
-curl http://localhost:3001/health
-
-# 5. Dừng các dịch vụ
+# 4. Dừng dịch vụ
 docker compose down
 ```
-- **Frontend Web**: http://localhost:3000
-- **Backend API**: http://localhost:3001
-- **Database PostgreSQL**: localhost:5432
 
-### 6.2. Chạy Kiểm thử (Unit, Integration & E2E Tests)
+Sau khi container khởi động thành công, truy cập Frontend tại `http://localhost:3000` và Backend API tại `http://localhost:3001/health`.
+
+### 6.3. Chạy trực tiếp trên máy (Monorepo) & Kiểm thử
+
 ```bash
-# Thực thi 100 Unit Tests logic nghiệp vụ (Vitest)
-npm --prefix apps/api run test
+# Cài đặt dependencies & đồng bộ database
+npm install
+npm --prefix apps/api install
+npm --prefix apps/web install
+npm run prisma:generate && npm run db:push && npm run db:seed
 
-# Thực thi bộ kiểm thử tích hợp API và E2E Flow (Menu -> Order -> Payment)
-npm --prefix apps/api run test:e2e
+# Khởi chạy ứng dụng
+npm run dev:api      # http://localhost:3001
+npm run dev:web      # http://localhost:3000
 
-# Soát lỗi cú pháp (Lint)
+# Chạy Lint, Unit Tests, E2E Tests & Build
 npm run lint
+npm test             # Unit Tests Backend
+npm run test:e2e     # Integration & E2E Tests (tests/)
+npm run build
 ```
-
-### 6.3. Triển khai Môi trường Production & URL dịch vụ
-Hệ thống được triển khai tự động qua pipeline CI/CD GitHub Actions:
-- **Frontend Production (HTTPS - Vercel)**: `https://brewlite-web.vercel.app`
-- **Backend API Production (HTTPS - Render)**: `https://brewlite-api.onrender.com`
-- **Health Check Endpoint**: `https://brewlite-api.onrender.com/health`
-- **Cơ sở dữ liệu (Neon Serverless PostgreSQL)**: Chạy qua SSL mã hóa nội bộ có Connection Pooling, không mở cổng public trực tiếp ra Internet. Toàn bộ thông tin nhạy cảm lưu trong GitHub Secrets (`RENDER_DEPLOY_HOOK_URL`, `DATABASE_URL`).
 
 ### 6.4. Quy trình Rollback khi Triển khai Thất bại
 1. Khi bước **Smoke Test** trong CI/CD thất bại (endpoint `/health` không trả về HTTP 200 OK):
@@ -185,3 +188,5 @@ Hệ thống được triển khai tự động qua pipeline CI/CD GitHub Action
    git revert HEAD -m 1
    git push origin main
    ```
+
+Xem hướng dẫn chi tiết tại [docs/deployment.md](./docs/deployment.md).

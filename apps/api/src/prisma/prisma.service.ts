@@ -27,6 +27,23 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     });
   }
 
+  async ensureConnected(): Promise<boolean> {
+    if (this.isConnected) {
+      return true;
+    }
+    try {
+      await this.$connect();
+      this.isConnected = true;
+      this.logger.log('Đã kết nối lại thành công tới cơ sở dữ liệu PostgreSQL.');
+      return true;
+    } catch (error: unknown) {
+      this.isConnected = false;
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Kết nối PostgreSQL thất bại: ${message}`);
+      return false;
+    }
+  }
+
   async onModuleInit(): Promise<void> {
     try {
       await this.$connect();
