@@ -270,12 +270,14 @@ export default function ProductDetailPage({ params }: PageProps) {
       {/* Main Container */}
       <div className="max-w-md mx-auto px-4 py-4 space-y-4">
         {showToast && (
-          <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-emerald-700 text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 animate-bounce">
-            <Check className="w-4 h-4" />
-            <span>Đã thêm vào giỏ hàng thành công!</span>
-            <Link href="/cart" className="underline font-bold ml-1">
-              Xem giỏ
-            </Link>
+          <div className="fixed top-16 inset-x-0 z-50 flex justify-center px-4 pointer-events-none">
+            <div className="pointer-events-auto bg-emerald-700 text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 animate-bounce">
+              <Check className="w-4 h-4 shrink-0" />
+              <span>Đã thêm vào giỏ hàng thành công!</span>
+              <Link href="/cart" className="underline font-bold ml-1 shrink-0">
+                Xem giỏ
+              </Link>
+            </div>
           </div>
         )}
 

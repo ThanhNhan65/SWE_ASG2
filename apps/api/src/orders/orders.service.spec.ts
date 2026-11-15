@@ -26,6 +26,10 @@ describe('OrdersService, StateMachine & Concurrency (Task 5.4 & Task 10)', () =>
         findUnique: vi.fn().mockResolvedValue(null),
         update: vi.fn(),
       },
+      topping: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        update: vi.fn(),
+      },
       promotion: {
         findUnique: vi.fn(),
         update: vi.fn(),
@@ -205,6 +209,72 @@ describe('OrdersService, StateMachine & Concurrency (Task 5.4 & Task 10)', () =>
       expect(mockPrisma.promotion.update).toHaveBeenCalledWith({
         where: { id: 5 },
         data: { usedCount: { increment: 1 } },
+      });
+    });
+
+    it('chặn lỗi BadRequestException khi topping được chọn hết hàng hoặc không đủ số lượng', async () => {
+      mockPrisma.product.findMany.mockResolvedValue([
+        { id: 1, name: 'Trà sữa Oolong nướng', price: 42000, stock: 20, isAvailable: true },
+      ]);
+      mockPrisma.topping.findFirst.mockResolvedValue({
+        id: 2,
+        name: 'Trân châu trắng',
+        price: 10000,
+        stock: 0,
+        isAvailable: false,
+      });
+
+      await expect(
+        ordersService.createOrder({
+          userId: 1,
+          items: [
+            {
+              productId: 1,
+              size: ProductSize.M,
+              quantity: 1,
+              toppings: [{ id: 2, name: 'Trân châu trắng', price: 10000 }],
+            },
+          ],
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockPrisma.order.create).not.toHaveBeenCalled();
+    });
+
+    it('trừ tồn kho topping trong transaction và cập nhật isAvailable = false khi stock về 0', async () => {
+      mockPrisma.product.findMany.mockResolvedValue([
+        { id: 1, name: 'Trà sữa Oolong nướng', price: 42000, stock: 20, isAvailable: true },
+      ]);
+      mockPrisma.topping.findFirst.mockResolvedValue({
+        id: 1,
+        name: 'Trân châu đen',
+        price: 10000,
+        stock: 2,
+        isAvailable: true,
+      });
+      mockPrisma.order.create.mockImplementation(async ({ data }: any) => ({
+        id: 12,
+        ...data,
+      }));
+
+      await ordersService.createOrder({
+        userId: 1,
+        items: [
+          {
+            productId: 1,
+            size: ProductSize.M,
+            quantity: 2,
+            toppings: [{ id: 1, name: 'Trân châu đen', price: 10000 }],
+          },
+        ],
+      });
+
+      expect(mockPrisma.topping.update).toHaveBeenCalledWith({
+        where: { id: 1 },
+        data: {
+          stock: 0,
+          isAvailable: false,
+        },
       });
     });
   });
