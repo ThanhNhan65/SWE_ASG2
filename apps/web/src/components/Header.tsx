@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Coffee, ClipboardList, LogOut } from 'lucide-react';
 import { CartBadge } from './CartBadge';
 import { clearAuthData, getStoredUser, User } from '@/lib/auth';
+import { useCartStore } from '@/store/useCartStore';
 
 export const Header: React.FC = () => {
   const pathname = usePathname();
@@ -20,6 +21,7 @@ export const Header: React.FC = () => {
 
   const handleLogout = () => {
     clearAuthData();
+    void useCartStore.persist.rehydrate();
     setCurrentUser(null);
     window.location.reload();
   };

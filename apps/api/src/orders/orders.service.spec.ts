@@ -1,5 +1,7 @@
+import { createHmac } from 'node:crypto';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { OrdersService } from './orders.service.js';
+import { OrdersController } from './orders.controller.js';
 import { OrderStateMachine, OrderStatus } from './order-state-machine.js';
 import { ProductSize } from './dto/create-order.dto.js';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
@@ -407,6 +409,28 @@ describe('OrdersService, StateMachine & Concurrency (Task 5.4 & Task 10)', () =>
       const result = await ordersService.findByUserId(99);
 
       expect(result).toEqual([]);
+    });
+
+    it('OrdersController.createOrder giải mã Bearer token để truyền đúng authUserId vào service', async () => {
+      const mockOrdersService = {
+        createOrder: vi.fn().mockResolvedValue({ id: 10, userId: 42 }),
+      };
+      const controller = new OrdersController(mockOrdersService as never);
+
+      const secret = process.env.JWT_SECRET || 'brewlite_jwt_secret_key_2026';
+      const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+      const payload = Buffer.from(
+        JSON.stringify({ sub: 42, email: 'u42@brewlite.vn', exp: Math.floor(Date.now() / 1000) + 3600 }),
+      ).toString('base64url');
+      const signature = createHmac('sha256', secret).update(`${header}.${payload}`).digest('base64url');
+      const token = `${header}.${payload}.${signature}`;
+
+      const dto = { items: [{ productId: 1, quantity: 1 }] };
+      await controller.createOrder(dto as never, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+      expect(mockOrdersService.createOrder).toHaveBeenCalledWith(dto, 42);
     });
   });
 });

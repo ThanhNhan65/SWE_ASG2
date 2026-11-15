@@ -16,7 +16,7 @@ import {
   CreditCard,
 } from 'lucide-react';
 import { useCartStore } from '@/store/useCartStore';
-import { getAuthToken, updateStoredUserPoints } from '@/lib/auth';
+import { getAuthToken, getStoredUser, updateStoredUserPoints } from '@/lib/auth';
 
 type PaymentMethodType = 'WALLET' | 'CARD';
 
@@ -68,6 +68,7 @@ function CheckoutContent(): React.JSX.Element {
 
   useEffect(() => {
     const token = getAuthToken();
+    const storedUser = getStoredUser();
     if (!token) return;
 
     fetch(`${apiUrl}/promotions/loyalty/me`, {
@@ -75,7 +76,13 @@ function CheckoutContent(): React.JSX.Element {
     })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data && typeof data.points === 'number') {
+        if (
+          data &&
+          (!data.email ||
+            !storedUser?.email ||
+            data.email.toLowerCase() === storedUser.email.toLowerCase()) &&
+          typeof data.points === 'number'
+        ) {
           setUserAvailablePoints(data.points);
         }
       })
@@ -193,6 +200,7 @@ function CheckoutContent(): React.JSX.Element {
           toppings: item.toppings ?? [],
         }));
 
+        const currentUser = getStoredUser();
         const createOrderRes = await fetch(`${apiUrl}/orders`, {
           method: 'POST',
           headers: {
@@ -200,6 +208,7 @@ function CheckoutContent(): React.JSX.Element {
             ...authHeaders,
           },
           body: JSON.stringify({
+            userId: currentUser?.id ? Number(currentUser.id) : undefined,
             items: orderPayloadItems,
             promotionCode: appliedPromo?.code || undefined,
             pointsToUse: pointsToUse > 0 ? pointsToUse : undefined,
