@@ -24,7 +24,7 @@ jobs:
   # Stage 1: Quality Gate (Lint, Unit Test, Integration Test, Build)
   # ============================================================================
   quality-gate:
-    name: "Quality Gate: Lint -> Tests -> Build"
+    name: "Install -> Lint -> Unit Test -> Build"
     runs-on: ubuntu-latest
 
     services:
