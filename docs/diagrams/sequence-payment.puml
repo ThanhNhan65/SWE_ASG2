@@ -1,0 +1,39 @@
+@startuml
+title 2. Thanh toán & idempotency
+
+participant "Next.js UI\n(Web/Mobile)" as UI
+participant "NestJS API\n(Backend)" as API
+database "Database\n(PostgreSQL)" as DB
+participant "Payment Service\n(Ví điện tử / Thẻ ngân hàng)" as Payment
+
+activate UI
+UI -> API: 12. POST /payments\n(orderId, method, idempotencyKey)
+activate API
+
+API -> API: 13. Kiểm tra idempotencyKey\n(đã xử lý? trả kết quả cũ)
+
+API -> Payment: 14. Gọi API thanh toán\n(amount, method, idempotencyKey)
+activate Payment
+
+alt Thanh toán thành công
+    Payment --> API: 15a. Kết quả thanh toán\n(success, transactionId)
+    API -> DB: 16a. Cập nhật trạng thái thanh toán\n(status=SUCCESS, transaction)
+    activate DB
+    API -> DB: 17a. Cập nhật trạng thái đơn hàng\n(status=PAID)
+    DB --> API: 18a. Trả kết quả cập nhật (ok)
+    deactivate DB
+    API --> UI: 19a. Trả kết quả thanh toán thành công
+else Thanh toán thất bại
+    Payment --> API: 15b. Kết quả thanh toán\n(failed, transactionId)
+    deactivate Payment
+    API -> DB: 16b. Cập nhật trạng thái thanh toán\n(status=FAILED, transaction)
+    activate DB
+    API -> DB: 17b. Cập nhật trạng thái đơn hàng\n(status=PENDING_PAYMENT)
+    DB --> API: 18b. Trả kết quả cập nhật (ok)
+    deactivate DB
+    API --> UI: 19b. Trả kết quả thanh toán thất bại
+end
+
+deactivate API
+deactivate UI
+@enduml
