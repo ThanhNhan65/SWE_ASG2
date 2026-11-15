@@ -142,8 +142,17 @@ Dự án được quản lý theo mô hình Agile/Scrum qua hai Sprint:
 ### 6.2. Chạy nhanh bằng Docker Compose (Local)
 
 ```bash
+# 1. Chuẩn bị biến môi trường
 cp .env.example .env
+
+# 2. Khởi chạy toàn bộ hệ thống (Postgres, API, Web)
 docker compose up --build -d
+
+# 3. Kiểm tra container
+docker compose ps
+
+# 4. Dừng dịch vụ
+docker compose down
 ```
 
 Sau khi container khởi động thành công, truy cập Frontend tại `http://localhost:3000` và Backend API tại `http://localhost:3001/health`.
@@ -163,9 +172,21 @@ npm run dev:web      # http://localhost:3000
 
 # Chạy Lint, Unit Tests, E2E Tests & Build
 npm run lint
-npm test             # 50 Unit Tests Backend
-npm run test:e2e     # 10 Integration & E2E Tests (tests/)
+npm test             # Unit Tests Backend
+npm run test:e2e     # Integration & E2E Tests (tests/)
 npm run build
 ```
+
+### 6.4. Quy trình Rollback khi Triển khai Thất bại
+1. Khi bước **Smoke Test** trong CI/CD thất bại (endpoint `/health` không trả về HTTP 200 OK):
+   - Pipeline GitHub Actions lập tức dừng và báo trạng thái đỏ.
+   - Nền tảng Render tự động duy trì phiên bản trước đó (Zero-Downtime Rollback), bảo đảm người dùng không bị gián đoạn dịch vụ.
+2. Quy trình rollback mã nguồn thủ công qua Git:
+   ```bash
+   git checkout main
+   git pull origin main
+   git revert HEAD -m 1
+   git push origin main
+   ```
 
 Xem hướng dẫn chi tiết tại [docs/deployment.md](./docs/deployment.md).

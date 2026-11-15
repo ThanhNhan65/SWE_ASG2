@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SugarIceCalculator } from './sugar-ice.calculator.js';
+import {
+  SugarIceCalculator,
+  calculateAvailableCupsByIngredients,
+  isProductAvailableByIngredients,
+} from './sugar-ice.calculator.js';
 import { BadRequestException } from '@nestjs/common';
 
 describe('SugarIceCalculator - Unit Tests', () => {
@@ -35,5 +39,33 @@ describe('SugarIceCalculator - Unit Tests', () => {
   it('ném lỗi BadRequestException khi mức đá không hợp lệ', () => {
     expect(() => calculator.calculate(100, 25)).toThrow(BadRequestException);
     expect(() => calculator.calculate(100, 150)).toThrow(BadRequestException);
+  });
+
+  describe('calculateAvailableCupsByIngredients - Công thức tính số ly tồn kho từ nguyên liệu', () => {
+    it('tính đúng số ly Americano Size S từ hạt cà phê (16g / ly)', () => {
+      // 160g cà phê -> 160 / 16 = 10 ly
+      const cups = calculateAvailableCupsByIngredients('Americano', { coffee: 160 }, 'S');
+      expect(cups).toBe(10);
+    });
+
+    it('tính đúng số ly Cà phê sữa (giới hạn bởi nguyên liệu ít hơn giữa cà phê và sữa)', () => {
+      // Size S cà phê sữa: 18g cà phê, 30ml sữa
+      // 180g cà phê (10 ly), 150ml sữa (5 ly) -> giới hạn là 5 ly
+      const cups = calculateAvailableCupsByIngredients('Cà phê sữa đá', { coffee: 180, milk: 150 }, 'S');
+      expect(cups).toBe(5);
+    });
+
+    it('trả về 0 ly khi hết nguyên liệu cốt', () => {
+      const cups = calculateAvailableCupsByIngredients('Americano', { coffee: 0 }, 'S');
+      expect(cups).toBe(0);
+      expect(isProductAvailableByIngredients('Americano', 0, 1000, 1000)).toBe(false);
+    });
+
+    it('tính đúng số ly Trà đào từ lá trà (Size S: 10g / ly)', () => {
+      // 250g lá trà -> 250 / 10 = 25 ly
+      const cups = calculateAvailableCupsByIngredients('Trà đào cam sả', { tea: 250 }, 'S');
+      expect(cups).toBe(25);
+      expect(isProductAvailableByIngredients('Trà đào cam sả', 0, 250, 0)).toBe(true);
+    });
   });
 });

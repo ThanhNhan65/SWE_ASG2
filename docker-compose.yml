@@ -1,4 +1,7 @@
+version: '3.8'
+
 services:
+  # 1. Cơ sở dữ liệu PostgreSQL
   postgres:
     image: postgres:16-alpine
     container_name: brewlite-postgres
@@ -17,6 +20,7 @@ services:
       timeout: 5s
       retries: 5
 
+  # 2. Backend API (NestJS)
   api:
     build:
       context: ./apps/api
@@ -39,6 +43,7 @@ services:
       retries: 5
       start_period: 20s
 
+  # 3. Frontend Web Client (Next.js PWA)
   web:
     build:
       context: ./apps/web

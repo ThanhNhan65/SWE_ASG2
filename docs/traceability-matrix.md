@@ -3,6 +3,8 @@
 > **Dự án**: BrewLite — Hệ thống đặt đồ uống trực tuyến  
 > **Tài liệu tham chiếu**: [Đặc tả Yêu cầu (SRS)](./requirements/srs.md) | [Bối cảnh & Phạm vi](./requirements/context-and-scope.md) | [Đặc tả Use Case UC-01](./requirements/uc-order-and-payment.md) | [Kiến trúc Phân lớp](./architecture/LayeredArchitecture.svg) | [Triển khai & CI/CD](./deployment.md)
 
+---
+
 ## 1. Truy vết Yêu cầu Chức năng (Functional Requirements)
 
 | Mã yêu cầu | Tên yêu cầu | Thiết kế / Sơ đồ | Mã nguồn / API Thực thi | Kiểm thử / Test Case | Trạng thái |
@@ -14,6 +16,8 @@
 | **FR-05** | Tạo đơn hàng | [UseCase_DatvaThanhtoan](./requirements/UseCase_DatvaThanhtoan.svg), [Activity_DatvaThanhtoan](./diagrams/Activity_DatvaThanhtoan.svg), [Sequence_Checkout](./diagrams/Sequence_Checkout.svg) | `POST /orders`, `orders.controller.ts`, `orders.service.ts`, `order-state-machine.ts`, `create-order.dto.ts`, Prisma `$transaction` + `version` optimistic lock | `orders.service.spec.ts` (18 unit tests), `tests/orders.e2e-spec.ts` (DTO validation `400 Bad Request`) | **Done** |
 | **FR-06** | Thanh toán không tiền mặt | [UseCase_DatvaThanhtoan](./requirements/UseCase_DatvaThanhtoan.svg), [Activity_DatvaThanhtoan](./diagrams/Activity_DatvaThanhtoan.svg), [Sequence_Payment](./diagrams/Sequence_Payment.svg), [Sequence_Result](./diagrams/Sequence_Result.svg) | `POST /payments`, `payments.controller.ts`, `payments.service.ts`, `wallet-payment.strategy.ts` (ZaloPay), `card-payment.strategy.ts` (VNPay), `create-payment.dto.ts`, `apps/web/src/app/checkout/[id]/page.tsx`, `vnpay-return/page.tsx`, `zalopay-return/page.tsx` | `discount-strategy.spec.ts` (4 tests), `tests/payments.e2e-spec.ts` (validation `idempotencyKey`, `method`, `orderId`), kiểm tra retry khi `PAYMENT_FAILED` | **Done** |
 | **FR-07** | Xem và xác nhận lịch sử đơn hàng | [UseCase_TongQuan](./requirements/UseCase_TongQuan.svg), [Sequence_Result](./diagrams/Sequence_Result.svg) | `GET /orders`, `GET /orders/:id`, `orders.service.ts`, `apps/web/src/app/orders/page.tsx`, `apps/web/src/app/orders/[id]/page.tsx` | Truy vấn danh sách & chi tiết đơn hàng theo người dùng, hiển thị trạng thái State Machine | **Done** |
+| **FR-08** | Quản lý và chuyển đổi trạng thái đơn hàng | [UseCase_TongQuan](./requirements/UseCase_TongQuan.svg), [Sequence_Result](./diagrams/Sequence_Result.svg), [ADR-004 Order State Machine](./architecture/adr/004-order-state-machine-and-concurrency.md) | `PATCH /orders/:orderCode/status`, `orders.controller.ts`, `orders.service.ts`, `order-state-machine.ts`, Prisma `$transaction` (chuyển đổi trạng thái đơn, rollback tồn kho khi đơn bị hủy `CANCELLED`) | `orders.service.spec.ts` (unit tests kiểm tra chuyển trạng thái hợp lệ `PENDING -> PAID -> PREPARING -> READY -> COMPLETED` và chặn chuyển trạng thái phi logic), `tests/orders.e2e-spec.ts` | **Done** |
+| **FR-09** | Khuyến mãi và điểm thưởng thành viên | [UseCase_TongQuan](./requirements/UseCase_TongQuan.svg), [Classdiagram](./diagrams/Classdiagram.svg), [ADR-003 Payment Strategy & Idempotency](./architecture/adr/003-payment-strategy-and-idempotency.md) | `POST /promotions/validate`, `GET /promotions`, `GET /promotions/loyalty/me`, `promotions.controller.ts`, `promotions.service.ts`, `loyalty.service.ts`, `discount-strategy.ts`, `apps/web/src/app/checkout/page.tsx` | `discount-strategy.spec.ts` (4 unit tests tính chiết khấu phần trăm, giảm giá cố định, kiểm tra điều kiện min/max), kiểm tra xác thực mã voucher và tích lũy điểm thưởng | **Done** |
 
 ---
 

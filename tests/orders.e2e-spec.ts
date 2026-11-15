@@ -41,6 +41,7 @@ describe('Orders & Menu Flow (Integration & E2E Test)', () => {
       }),
     );
     await app.init();
+    await app.listen(0);
   });
 
   /**

@@ -10,7 +10,20 @@
     "target": "ES2023",
     "skipLibCheck": true,
     "strict": false,
-    "types": ["vitest/globals", "node"]
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
+    "typeRoots": [
+      "./node_modules/@types",
+      "./apps/api/node_modules/@types"
+    ],
+    "paths": {
+      "@nestjs/*": ["./apps/api/node_modules/@nestjs/*"],
+      "supertest": ["./apps/api/node_modules/supertest"],
+      "@prisma/client": ["./apps/api/node_modules/@prisma/client"],
+      "@prisma/client/*": ["./apps/api/node_modules/@prisma/client/*"],
+      "vitest": ["./apps/api/node_modules/vitest"],
+      "vitest/*": ["./apps/api/node_modules/vitest/*"]
+    }
   },
   "include": ["tests/**/*", "vitest.config.e2e.ts"]
 }
