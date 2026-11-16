@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Header } from '../components/Header';
 import { Coffee, ArrowRight, RefreshCw, AlertCircle, ShoppingBag } from 'lucide-react';
 import { clearAuthData, getAuthToken, getStoredUser, updateStoredUserPoints, User } from '@/lib/auth';
+import { useCartStore } from '@/store/useCartStore';
 
 export interface Product {
   id: number;
@@ -59,9 +60,21 @@ export default function Home() {
         fetch(`${apiUrl}/promotions/loyalty/me`, {
           headers: { Authorization: `Bearer ${token}` },
         })
-          .then((res) => (res.ok ? res.json() : null))
+          .then((res) => {
+            if (res.status === 401) {
+              clearAuthData();
+              void useCartStore.persist.rehydrate();
+              setCurrentUser(null);
+              return null;
+            }
+            return res.ok ? res.json() : null;
+          })
           .then((data) => {
-            if (data && typeof data.points === 'number') {
+            if (
+              data &&
+              (!data.email || data.email.toLowerCase() === user.email.toLowerCase()) &&
+              typeof data.points === 'number'
+            ) {
               setCurrentUser((prev) => (prev ? { ...prev, loyaltyPoints: data.points } : null));
               updateStoredUserPoints(data.points);
             }
@@ -82,7 +95,9 @@ export default function Home() {
 
   const handleLogout = () => {
     clearAuthData();
+    void useCartStore.persist.rehydrate();
     setCurrentUser(null);
+    window.location.reload();
   };
 
   return (

@@ -127,3 +127,66 @@ Dự án được quản lý theo mô hình Agile/Scrum qua hai Sprint:
 - **Product Backlog & Sprint Board**: Theo dõi trực tiếp tại **[GitHub Projects](https://github.com/ThanhNhan65/SWE_ASG2/projects)**.
 - **Sprint 1 (Task 4)**: Xây dựng nền tảng kỹ thuật, đặc tả tài liệu (Task 1-3), MVP luồng xem menu và thiết lập CI tự động.
 - **Sprint 2 (Task 5)**: Hoàn thiện luồng đặt hàng end-to-end, thanh toán, kiểm thử tích hợp/E2E, CD tự động và triển khai lên Production.
+
+---
+
+## 6. Hướng dẫn Chạy Dự án, Kiểm thử & Môi trường Production
+
+### 6.1. Môi trường Production (Live)
+
+- **Frontend Web App (Vercel):** https://brewlite05.vercel.app
+- **Backend API (Render):** https://swe-asg2.onrender.com
+- **API Health Check:** https://swe-asg2.onrender.com/health
+- **Database:** Neon Serverless PostgreSQL (`brewlite_db`)
+
+### 6.2. Chạy nhanh bằng Docker Compose (Local)
+
+```bash
+# 1. Chuẩn bị biến môi trường
+cp .env.example .env
+
+# 2. Khởi chạy toàn bộ hệ thống (Postgres, API, Web)
+docker compose up --build -d
+
+# 3. Kiểm tra container
+docker compose ps
+
+# 4. Dừng dịch vụ
+docker compose down
+```
+
+Sau khi container khởi động thành công, truy cập Frontend tại `http://localhost:3000` và Backend API tại `http://localhost:3001/health`.
+
+### 6.3. Chạy trực tiếp trên máy (Monorepo) & Kiểm thử
+
+```bash
+# Cài đặt dependencies & đồng bộ database
+npm install
+npm --prefix apps/api install
+npm --prefix apps/web install
+npm run prisma:generate && npm run db:push && npm run db:seed
+
+# Khởi chạy ứng dụng
+npm run dev:api      # http://localhost:3001
+npm run dev:web      # http://localhost:3000
+
+# Chạy Lint, Unit Tests, E2E Tests & Build
+npm run lint
+npm test             # Unit Tests Backend
+npm run test:e2e     # Integration & E2E Tests (tests/)
+npm run build
+```
+
+### 6.4. Quy trình Rollback khi Triển khai Thất bại
+1. Khi bước **Smoke Test** trong CI/CD thất bại (endpoint `/health` không trả về HTTP 200 OK):
+   - Pipeline GitHub Actions lập tức dừng và báo trạng thái đỏ.
+   - Nền tảng Render tự động duy trì phiên bản trước đó (Zero-Downtime Rollback), bảo đảm người dùng không bị gián đoạn dịch vụ.
+2. Quy trình rollback mã nguồn thủ công qua Git:
+   ```bash
+   git checkout main
+   git pull origin main
+   git revert HEAD -m 1
+   git push origin main
+   ```
+
+Xem hướng dẫn chi tiết tại [docs/deployment.md](./docs/deployment.md).

@@ -36,6 +36,7 @@ describe('Payments API (Integration & E2E Test)', () => {
       }),
     );
     await app.init();
+    await app.listen(0);
   });
 
   afterAll(async () => {

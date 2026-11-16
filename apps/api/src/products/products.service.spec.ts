@@ -208,4 +208,36 @@ describe('ProductsService - Unit Tests (Task 4.3)', () => {
       expect(result).toEqual(mockIngredients);
     });
   });
+
+  describe('6. Tự động tính lại stock của Product khi chỉnh sửa Ingredients trong CSDL', () => {
+    it('tính lại stock của Americano khi kho hạt cà phê thay đổi (16g / ly size S)', async () => {
+      // Giả sử quản trị viên chỉnh sửa kho COFFEE_BEANS còn 160g
+      mockPrisma.product.findMany.mockResolvedValue([
+        { id: 2, name: 'Americano', price: 40000, stock: 999, isAvailable: true },
+      ]);
+      mockPrisma.ingredient.findMany.mockResolvedValue([
+        { code: 'COFFEE_BEANS', stock: 160 },
+      ]);
+
+      const result = await productsService.findAll();
+
+      // 160g cà phê / 16g = 10 ly
+      expect(result[0].stock).toBe(10);
+      expect(result[0].isAvailable).toBe(true);
+    });
+
+    it('tự động chuyển isAvailable = false và stock = 0 khi kho hết nguyên liệu', async () => {
+      mockPrisma.product.findMany.mockResolvedValue([
+        { id: 2, name: 'Americano', price: 40000, stock: 10, isAvailable: true },
+      ]);
+      mockPrisma.ingredient.findMany.mockResolvedValue([
+        { code: 'COFFEE_BEANS', stock: 0 },
+      ]);
+
+      const result = await productsService.findAll();
+
+      expect(result[0].stock).toBe(0);
+      expect(result[0].isAvailable).toBe(false);
+    });
+  });
 });

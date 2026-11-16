@@ -1,5 +1,6 @@
-import {create} from 'zustand';
-import {persist} from 'zustand/middleware';
+import { create } from 'zustand';
+import { createJSONStorage, persist, StateStorage } from 'zustand/middleware';
+import { getStoredUser } from '@/lib/auth';
 
 
 export interface ToppingItem{
@@ -48,6 +49,29 @@ const computeTotals = (items: CartItem[]) =>{
     const totalAmount = items.reduce( (sum,item) => sum + (item.lineTotal || item.unitPrice * item.qty), 0);
     const badgeCount = items.reduce((sum, item) => sum + item.qty, 0);
     return {totalAmount , badgeCount};
+};
+
+const getCartStorageKey = (): string => {
+    const user = getStoredUser();
+    return user?.id ? `brewlite-cart-user-${user.id}` : 'brewlite-cart-guest';
+};
+
+const userScopedStorage: StateStorage = {
+    getItem: () => {
+        if (typeof window === 'undefined') return null;
+        return (
+            window.localStorage.getItem(getCartStorageKey()) ??
+            JSON.stringify({ state: { items: [], totalAmount: 0, badgeCount: 0 }, version: 0 })
+        );
+    },
+    setItem: (_name, value) => {
+        if (typeof window === 'undefined') return;
+        window.localStorage.setItem(getCartStorageKey(), value);
+    },
+    removeItem: () => {
+        if (typeof window === 'undefined') return;
+        window.localStorage.removeItem(getCartStorageKey());
+    },
 };
 
 export const useCartStore = create<CartState>()(
@@ -136,6 +160,7 @@ export const useCartStore = create<CartState>()(
         }),
         {
             name: 'brewlite-car-storage',
+            storage: createJSONStorage(() => userScopedStorage),
         },
     ),
 );

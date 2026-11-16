@@ -191,6 +191,27 @@ export class OrdersService {
       if (err instanceof BadRequestException) throw err;
     }
 
+    // 4.5. Kiểm tra tồn kho Topping được chọn
+    const toppingCounts = this.collectToppingCounts(
+      dto.items.map((item) => ({
+        qty: item.quantity,
+        toppings: item.toppings,
+      })),
+    );
+
+    if (toppingCounts.size > 0 && typeof this.prisma.topping?.findFirst === 'function') {
+      for (const [toppingName, count] of toppingCounts.entries()) {
+        const existingTopping = await this.prisma.topping.findFirst({
+          where: { name: { equals: toppingName, mode: 'insensitive' } },
+        });
+        if (existingTopping && (!existingTopping.isAvailable || existingTopping.stock < count)) {
+          throw new BadRequestException(
+            `Topping "${existingTopping.name}" chỉ còn ${existingTopping.stock} phần trong kho, không đủ đáp ứng số lượng yêu cầu (${count}).`,
+          );
+        }
+      }
+    }
+
     // 5. Kiểm tra & áp dụng mã khuyến mãi (hỗ trợ cả promotionCode và promoCode)
     let promoDiscount = 0;
     let appliedPromotion: Promotion | null = null;
@@ -296,6 +317,13 @@ export class OrdersService {
 
       // 6.2. Trừ tồn kho nguyên liệu tương ứng nếu có
       await this.adjustIngredientStockInTx(tx, consumption, 'decrement');
+
+      // 6.2.5. Trừ tồn kho topping tương ứng nếu có
+      await this.adjustToppingStockInTx(
+        tx,
+        dto.items.map((item) => ({ qty: item.quantity, toppings: item.toppings })),
+        'decrement',
+      );
 
       // 6.3. Cập nhật lượt dùng khuyến mãi nếu có
       if (appliedPromotion) {
@@ -453,10 +481,8 @@ export class OrdersService {
         );
         await this.adjustIngredientStockInTx(tx, consumption, 'increment');
 
-        // Hoàn lại tồn kho topping khi hủy đơn đã thanh toán
-        if (order.status === OrderStatus.PAID) {
-          await this.restoreToppingStockInTx(tx, order.items);
-        }
+        // Hoàn lại tồn kho topping khi hủy đơn
+        await this.adjustToppingStockInTx(tx, order.items, 'increment');
       }
 
       return tx.order.update({
@@ -520,10 +546,12 @@ export class OrdersService {
     }
   }
 
-  private async restoreToppingStockInTx(
-    tx: Prisma.TransactionClient,
-    items: Array<{ qty: number; toppings: Prisma.JsonValue }>,
-  ): Promise<void> {
+  /**
+   * Gom tổng số lượng từng topping được chọn trong danh sách món của đơn hàng.
+   */
+  private collectToppingCounts(
+    items: Array<{ qty: number; toppings: unknown }>,
+  ): Map<string, number> {
     const toppingCounts = new Map<string, number>();
 
     for (const item of items) {
@@ -539,10 +567,27 @@ export class OrdersService {
               ? (rawTopping as { name: string }).name
               : undefined;
 
-        if (toppingName) {
-          toppingCounts.set(toppingName, (toppingCounts.get(toppingName) || 0) + item.qty);
+        const normalizedName = toppingName?.trim();
+        if (normalizedName) {
+          toppingCounts.set(normalizedName, (toppingCounts.get(normalizedName) || 0) + item.qty);
         }
       }
+    }
+
+    return toppingCounts;
+  }
+
+  /**
+   * Trừ hoặc hoàn tồn kho topping bên trong transaction tạo/hủy đơn.
+   */
+  private async adjustToppingStockInTx(
+    tx: Prisma.TransactionClient,
+    items: Array<{ qty: number; toppings: unknown }>,
+    direction: 'increment' | 'decrement',
+  ): Promise<void> {
+    const toppingCounts = this.collectToppingCounts(items);
+    if (toppingCounts.size === 0 || typeof tx.topping?.findFirst !== 'function') {
+      return;
     }
 
     for (const [toppingName, count] of toppingCounts.entries()) {
@@ -551,7 +596,17 @@ export class OrdersService {
           where: { name: { equals: toppingName, mode: 'insensitive' } },
         });
         if (existingTopping) {
-          const newStock = existingTopping.stock + count;
+          if (direction === 'decrement' && (!existingTopping.isAvailable || existingTopping.stock < count)) {
+            throw new BadRequestException(
+              `Topping "${existingTopping.name}" chỉ còn ${existingTopping.stock} phần trong kho, không đủ đáp ứng số lượng yêu cầu (${count}).`,
+            );
+          }
+
+          const newStock =
+            direction === 'increment'
+              ? existingTopping.stock + count
+              : Math.max(0, existingTopping.stock - count);
+
           await tx.topping.update({
             where: { id: existingTopping.id },
             data: {
@@ -560,8 +615,9 @@ export class OrdersService {
             },
           });
         }
-      } catch {
-        // Bỏ qua nếu lỗi DB topping không chặn giao dịch hủy đơn
+      } catch (err: unknown) {
+        if (err instanceof BadRequestException) throw err;
+        // Bỏ qua nếu lỗi DB topping không chặn giao dịch tạo/hủy đơn
       }
     }
   }

@@ -6,6 +6,212 @@
   },
   "item": [
     {
+      "name": "00. Xác thực & Tài khoản (Auth & JWT)",
+      "item": [
+        {
+          "name": "POST /auth/register (Đăng ký tài khoản mới)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Đăng ký tài khoản thành công (201 Created)\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.success).to.be.true;",
+                  "    pm.expect(data).to.have.property(\"user\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user_1794680876248@brewlite.vn\",\n  \"password\": \"password123\",\n  \"fullName\": \"Khách hàng Mới\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /auth/register (Bắt lỗi trùng email 409 Conflict)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Chặn trùng email thành công (409 Conflict)\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"customer@brewlite.vn\",\n  \"password\": \"password123\",\n  \"fullName\": \"Khách hàng Test\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /auth/login (Đăng nhập & Lưu JWT Access Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Đăng nhập thành công (200 OK)\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.success).to.be.true;",
+                  "    pm.expect(data).to.have.property(\"accessToken\");",
+                  "    pm.collectionVariables.set(\"authToken\", data.accessToken);",
+                  "    pm.collectionVariables.set(\"currentUserId\", data.user.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"customer@brewlite.vn\",\n  \"password\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /auth/login (Bắt lỗi sai mật khẩu 401 Unauthorized)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Chặn sai mật khẩu (401 Unauthorized)\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"customer@brewlite.vn\",\n  \"password\": \"sai_mat_khau_123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /auth/me (Lấy thông tin cá nhân bằng Bearer JWT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Xác thực JWT thành công (200 OK)\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.user.email).to.eql(\"customer@brewlite.vn\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "01. Hệ thống & Sức khỏe",
       "item": [
         {
@@ -33,8 +239,12 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/health",
-              "host": ["{{baseUrl}}"],
-              "path": ["health"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
             }
           }
         }
@@ -69,8 +279,12 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/products",
-              "host": ["{{baseUrl}}"],
-              "path": ["products"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
             }
           }
         },
@@ -96,8 +310,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/products/{{selectedProductId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["products", "{{selectedProductId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{selectedProductId}}"
+              ]
             }
           }
         },
@@ -122,8 +341,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/products/toppings",
-              "host": ["{{baseUrl}}"],
-              "path": ["products", "toppings"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "toppings"
+              ]
             }
           }
         },
@@ -148,8 +372,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/products/ingredients",
-              "host": ["{{baseUrl}}"],
-              "path": ["products", "ingredients"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "ingredients"
+              ]
             }
           }
         }
@@ -179,8 +408,12 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/promotions",
-              "host": ["{{baseUrl}}"],
-              "path": ["promotions"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "promotions"
+              ]
             }
           }
         }
@@ -224,8 +457,12 @@
             },
             "url": {
               "raw": "{{baseUrl}}/orders",
-              "host": ["{{baseUrl}}"],
-              "path": ["orders"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ]
             }
           }
         },
@@ -260,8 +497,12 @@
             },
             "url": {
               "raw": "{{baseUrl}}/orders",
-              "host": ["{{baseUrl}}"],
-              "path": ["orders"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ]
             }
           }
         },
@@ -294,8 +535,12 @@
             },
             "url": {
               "raw": "{{baseUrl}}/orders",
-              "host": ["{{baseUrl}}"],
-              "path": ["orders"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ]
             }
           }
         }
@@ -346,8 +591,12 @@
             },
             "url": {
               "raw": "{{baseUrl}}/payments",
-              "host": ["{{baseUrl}}"],
-              "path": ["payments"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments"
+              ]
             }
           }
         },
@@ -380,8 +629,12 @@
             },
             "url": {
               "raw": "{{baseUrl}}/payments",
-              "host": ["{{baseUrl}}"],
-              "path": ["payments"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments"
+              ]
             }
           }
         },
@@ -405,8 +658,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/payments/order/{{currentOrderId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["payments", "order", "{{currentOrderId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "order",
+                "{{currentOrderId}}"
+              ]
             }
           }
         }
@@ -437,8 +696,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/orders/{{currentOrderCode}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["orders", "{{currentOrderCode}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{currentOrderCode}}"
+              ]
             }
           }
         },
@@ -473,8 +737,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/orders/{{currentOrderCode}}/status",
-              "host": ["{{baseUrl}}"],
-              "path": ["orders", "{{currentOrderCode}}", "status"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{currentOrderCode}}",
+                "status"
+              ]
             }
           }
         }
@@ -543,8 +813,12 @@
             },
             "url": {
               "raw": "{{baseUrl}}/orders",
-              "host": ["{{baseUrl}}"],
-              "path": ["orders"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ]
             }
           }
         }
@@ -554,7 +828,7 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://localhost:3000",
+      "value": "http://localhost:3001",
       "type": "string"
     },
     {
@@ -580,6 +854,16 @@
     {
       "key": "paymentIdempotencyKey",
       "value": "",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "currentUserId",
+      "value": "1",
       "type": "string"
     }
   ]
