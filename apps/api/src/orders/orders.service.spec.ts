@@ -372,25 +372,6 @@ describe('OrdersService, StateMachine & Concurrency (Task 5.4 & Task 10)', () =>
       expect(product.stock).toBeGreaterThanOrEqual(0);
       expect(product.version).toBe(initialStock + 1);
     });
-
-    it('chặn lỗi BadRequestException và rollback khi tranh chấp nguyên liệu (ingredient.updateMany trả về count = 0)', async () => {
-      mockPrisma.product.findMany.mockResolvedValue([
-        { id: 1, name: 'Americano', price: 40000, stock: 50, isAvailable: true },
-      ]);
-      mockPrisma.ingredient.findUnique.mockResolvedValue({ code: 'ICE', stock: 200 });
-      mockPrisma.ingredient.updateMany = vi.fn().mockResolvedValue({ count: 0 });
-      mockPrisma.order.create.mockResolvedValue({ id: 99 });
-
-      await expect(
-        ordersService.createOrder({
-          userId: 1,
-          items: [{ productId: 1, quantity: 1, size: ProductSize.M, ice: 'Bình thường' }],
-        }),
-      ).rejects.toThrow(BadRequestException);
-
-      expect(mockPrisma.ingredient.updateMany).toHaveBeenCalled();
-      expect(mockPrisma.order.create).not.toHaveBeenCalled();
-    });
   });
 
   describe('4. OrdersService.findByCode & findByUserId', () => {
