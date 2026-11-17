@@ -306,7 +306,7 @@ export class OrdersService {
     const newOrder = await this.prisma.$transaction(async (tx) => {
       // 6.1. Trừ tồn kho sản phẩm (Atomic Conditional Update / Optimistic Locking)
       for (const item of dto.items) {
-        const productTx = tx.product as {
+        const productTx = tx.product as unknown as {
           updateMany?: (args: {
             where: { id: number; isAvailable: boolean; stock: { gte: number } };
             data: { stock: { decrement: number }; version: { increment: number } };
@@ -655,7 +655,7 @@ export class OrdersService {
             );
           }
 
-          const toppingTx = tx.topping as {
+          const toppingTx = tx.topping as unknown as {
             updateMany?: (args: {
               where: { id: number; isAvailable: boolean; stock: { gte: number } };
               data: { stock: { decrement: number } };
