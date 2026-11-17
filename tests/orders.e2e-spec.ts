@@ -42,6 +42,8 @@ describe('Orders & Menu Flow (Integration & E2E Test)', () => {
     );
     await app.init();
     await app.listen(0);
+    // Warm-up kết nối DB trước khi đo thời gian phản hồi NFR-01
+    await request(app.getHttpServer()).get('/products');
   });
 
   /**
@@ -74,12 +76,24 @@ describe('Orders & Menu Flow (Integration & E2E Test)', () => {
   // Mục đích: Kiểm tra API GET lấy dữ liệu từ database trả về đúng
   // ─────────────────────────────────────────────────────────────
   describe('2. Luồng Menu Sản phẩm (GET /products)', () => {
-    it('GET /products - lấy danh sách thực đơn trả về mảng', async () => {
+    it('GET /products - lấy danh sách thực đơn trả về mảng trong vòng 500ms (NFR-01)', async () => {
+      const start = performance.now();
       const res = await request(app.getHttpServer())
         .get('/products')
         .expect(200);
+      const durationMs = performance.now() - start;
 
       expect(Array.isArray(res.body)).toBe(true);
+      expect(durationMs).toBeLessThan(500);
+    });
+
+    it('GET /products/:id - phản hồi thông tin chi tiết sản phẩm trong vòng 500ms (NFR-01)', async () => {
+      const start = performance.now();
+      const res = await request(app.getHttpServer()).get('/products/1');
+      const durationMs = performance.now() - start;
+
+      expect([200, 404]).toContain(res.status);
+      expect(durationMs).toBeLessThan(500);
     });
 
     it('GET /products/toppings - lấy danh sách topping trả về mảng', async () => {

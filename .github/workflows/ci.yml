@@ -162,10 +162,14 @@ jobs:
             echo "Đã kích hoạt deploy Production trên Render thành công!"
           fi
 
-      - name: "Production Smoke Test (Health Check)"
+      - name: "Production Smoke Test (Health Check & NFR-01 Latency)"
         run: |
           echo "=== PRODUCTION SMOKE TEST ==="
-          curl -fsS https://swe-asg2.onrender.com/health || echo "Backend Render đang khởi động hoặc cold-start."
+          echo "--> Warm-up /health (đánh thức Render nếu đang ngủ)..."
+          curl -fsS --retry 3 --retry-delay 5 --max-time 60 https://swe-asg2.onrender.com/health || echo "Backend Render đang khởi động hoặc cold-start."
+          echo "--> Kiểm tra & đo thời gian phản hồi GET /products (NFR-01)..."
+          curl -fsS -o /dev/null -w "NFR-01 Smoke Test GET /products -> HTTP %{http_code} | time_total=%{time_total}s (target <= 0.500s)\n" https://swe-asg2.onrender.com/products || echo "Cảnh báo: Không thể đo GET /products trên Render."
+          echo "--> Kiểm tra Frontend Vercel..."
           curl -fsSI https://brewlite05.vercel.app >/dev/null || echo "Frontend Vercel đang cập nhật."
 
       - name: "Rollback Strategy on Failure"

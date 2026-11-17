@@ -304,15 +304,43 @@ export class OrdersService {
 
     // 6. Thực thi Transaction đảm bảo tính ACID
     const newOrder = await this.prisma.$transaction(async (tx) => {
-      // 6.1. Trừ tồn kho sản phẩm (Optimistic Locking)
+      // 6.1. Trừ tồn kho sản phẩm (Atomic Conditional Update / Optimistic Locking)
       for (const item of dto.items) {
-        await tx.product.update({
-          where: { id: item.productId },
-          data: {
-            stock: { decrement: item.quantity },
-            version: { increment: 1 },
-          },
-        });
+        const productTx = tx.product as {
+          updateMany?: (args: {
+            where: { id: number; isAvailable: boolean; stock: { gte: number } };
+            data: { stock: { decrement: number }; version: { increment: number } };
+          }) => Promise<{ count: number }>;
+          update: typeof tx.product.update;
+        };
+
+        if (typeof productTx.updateMany === 'function') {
+          const updated = await productTx.updateMany({
+            where: {
+              id: item.productId,
+              isAvailable: true,
+              stock: { gte: item.quantity },
+            },
+            data: {
+              stock: { decrement: item.quantity },
+              version: { increment: 1 },
+            },
+          });
+
+          if (updated.count === 0) {
+            throw new BadRequestException(
+              `Sản phẩm "${productMap.get(item.productId)?.name || item.productId}" đã hết hàng hoặc không đủ số lượng yêu cầu (${item.quantity}).`,
+            );
+          }
+        } else {
+          await productTx.update({
+            where: { id: item.productId },
+            data: {
+              stock: { decrement: item.quantity },
+              version: { increment: 1 },
+            },
+          });
+        }
       }
 
       // 6.2. Trừ tồn kho nguyên liệu tương ứng nếu có
@@ -519,9 +547,15 @@ export class OrdersService {
             where: { code: string };
             data: { stock: { increment?: number; decrement?: number } };
           }) => Promise<unknown>;
+          updateMany?: (args: {
+            where: { code: string; stock?: { gte: number } };
+            data: { stock: { increment?: number; decrement?: number } };
+          }) => Promise<{ count: number }>;
         };
       };
-      if (!txWithIngredient?.ingredient?.update) return;
+      if (!txWithIngredient?.ingredient?.update && !txWithIngredient?.ingredient?.updateMany) {
+        return;
+      }
 
       const pairs: Array<[string, number]> = [
         ['COFFEE_BEANS', consumption.totalCoffeeGrams],
@@ -532,7 +566,25 @@ export class OrdersService {
       ];
 
       for (const [code, amount] of pairs) {
-        if (amount > 0) {
+        if (amount <= 0) continue;
+
+        if (direction === 'decrement' && typeof txWithIngredient.ingredient.updateMany === 'function') {
+          const updated = await txWithIngredient.ingredient.updateMany({
+            where: {
+              code,
+              stock: { gte: amount },
+            },
+            data: {
+              stock: { decrement: amount },
+            },
+          });
+
+          if (updated.count === 0) {
+            throw new BadRequestException(
+              `Kho nguyên liệu (${code}) không đủ để pha chế (cần ${amount}).`,
+            );
+          }
+        } else if (typeof txWithIngredient.ingredient.update === 'function') {
           await txWithIngredient.ingredient.update({
             where: { code },
             data: {
@@ -541,7 +593,8 @@ export class OrdersService {
           });
         }
       }
-    } catch {
+    } catch (err: unknown) {
+      if (err instanceof BadRequestException) throw err;
       // Bỏ qua nếu bảng ingredient chưa sẵn sàng hoặc thiếu bản ghi
     }
   }
@@ -602,18 +655,52 @@ export class OrdersService {
             );
           }
 
-          const newStock =
-            direction === 'increment'
-              ? existingTopping.stock + count
-              : Math.max(0, existingTopping.stock - count);
+          const toppingTx = tx.topping as {
+            updateMany?: (args: {
+              where: { id: number; isAvailable: boolean; stock: { gte: number } };
+              data: { stock: { decrement: number } };
+            }) => Promise<{ count: number }>;
+            update: typeof tx.topping.update;
+          };
 
-          await tx.topping.update({
-            where: { id: existingTopping.id },
-            data: {
-              stock: newStock,
-              isAvailable: newStock > 0,
-            },
-          });
+          if (direction === 'decrement' && typeof toppingTx.updateMany === 'function') {
+            const updated = await toppingTx.updateMany({
+              where: {
+                id: existingTopping.id,
+                isAvailable: true,
+                stock: { gte: count },
+              },
+              data: {
+                stock: { decrement: count },
+              },
+            });
+
+            if (updated.count === 0) {
+              throw new BadRequestException(
+                `Topping "${existingTopping.name}" chỉ còn ${existingTopping.stock} phần trong kho, không đủ đáp ứng số lượng yêu cầu (${count}).`,
+              );
+            }
+
+            if (existingTopping.stock - count <= 0) {
+              await toppingTx.update({
+                where: { id: existingTopping.id },
+                data: { isAvailable: false },
+              });
+            }
+          } else {
+            const newStock =
+              direction === 'increment'
+                ? existingTopping.stock + count
+                : Math.max(0, existingTopping.stock - count);
+
+            await toppingTx.update({
+              where: { id: existingTopping.id },
+              data: {
+                stock: newStock,
+                isAvailable: newStock > 0,
+              },
+            });
+          }
         }
       } catch (err: unknown) {
         if (err instanceof BadRequestException) throw err;
