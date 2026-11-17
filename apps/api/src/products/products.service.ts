@@ -85,10 +85,21 @@ export class ProductsService {
         };
       }
 
-      const products = await this.prisma.product.findMany({
-        where: Object.keys(where).length > 0 || filter ? where : undefined,
-        orderBy: { id: 'asc' },
-      });
+      const prismaWithIng = this.prisma as unknown as {
+        ingredient?: {
+          findMany?: () => Promise<Array<{ code: string; stock: number }>>;
+        };
+      };
+
+      const [products, ingList] = await Promise.all([
+        this.prisma.product.findMany({
+          where: Object.keys(where).length > 0 || filter ? where : undefined,
+          orderBy: { id: 'asc' },
+        }),
+        typeof prismaWithIng?.ingredient?.findMany === 'function'
+          ? Promise.resolve(prismaWithIng.ingredient.findMany()).catch(() => null)
+          : Promise.resolve(null),
+      ]);
 
       if (!products || products.length === 0) {
         return [];
@@ -100,25 +111,15 @@ export class ProductsService {
       let milkStock = ProductsService.getInMemoryIngredientStock('MILK');
       let isDbIngredientsAvailable = false;
 
-      try {
-        const prismaWithIng = this.prisma as unknown as {
-          ingredient?: {
-            findMany?: () => Promise<Array<{ code: string; stock: number }>>;
-          };
-        };
-        if (prismaWithIng?.ingredient?.findMany) {
-          const ingList = await prismaWithIng.ingredient.findMany();
-          if (Array.isArray(ingList) && ingList.length > 0) {
-            isDbIngredientsAvailable = true;
-            const ingMap = new Map(ingList.map((i) => [i.code, i.stock]));
-            if (ingMap.has('COFFEE_BEANS')) coffeeStock = ingMap.get('COFFEE_BEANS')!;
-            if (ingMap.has('TEA_LEAVES')) teaStock = ingMap.get('TEA_LEAVES')!;
-            if (ingMap.has('MILK')) milkStock = ingMap.get('MILK')!;
-          }
-        }
-      } catch {
-        // Fallback in-memory
+      if (Array.isArray(ingList) && ingList.length > 0) {
+        isDbIngredientsAvailable = true;
+        const ingMap = new Map(ingList.map((i) => [i.code, i.stock]));
+        if (ingMap.has('COFFEE_BEANS')) coffeeStock = ingMap.get('COFFEE_BEANS')!;
+        if (ingMap.has('TEA_LEAVES')) teaStock = ingMap.get('TEA_LEAVES')!;
+        if (ingMap.has('MILK')) milkStock = ingMap.get('MILK')!;
       }
+
+      const pendingUpdates: Array<Promise<unknown>> = [];
 
       for (const p of products) {
         const computedCups = ProductsService.calculateProductStock(
@@ -132,24 +133,28 @@ export class ProductsService {
         const newStock = isDbIngredientsAvailable ? computedCups : (p.stock ?? computedCups);
         const newIsAvailable = p.isAvailable && hasBaseIngredient;
 
-        // Tự động đồng bộ ngược lại vào bảng products trong DB nếu bạn vừa sửa bảng ingredients
+        // Tự động đồng bộ ngược lại vào bảng products trong DB (chạy song song không chặn phản hồi NFR-01)
         if (
           typeof this.prisma.product?.update === 'function' &&
           isDbIngredientsAvailable &&
           (p.stock !== newStock || p.isAvailable !== newIsAvailable)
         ) {
-          try {
-            await this.prisma.product.update({
-              where: { id: p.id },
-              data: { stock: newStock, isAvailable: newIsAvailable },
-            });
-          } catch {
-            // Bỏ qua nếu môi trường test không hỗ trợ update
-          }
+          pendingUpdates.push(
+            Promise.resolve(
+              this.prisma.product.update({
+                where: { id: p.id },
+                data: { stock: newStock, isAvailable: newIsAvailable },
+              }),
+            ).catch(() => null),
+          );
         }
 
         p.stock = newStock;
         p.isAvailable = newIsAvailable;
+      }
+
+      if (pendingUpdates.length > 0) {
+        void Promise.all(pendingUpdates);
       }
 
       return products;
@@ -170,9 +175,20 @@ export class ProductsService {
     }
 
     try {
-      const product = await this.prisma.product.findUnique({
-        where: { id },
-      });
+      const prismaWithIng = this.prisma as unknown as {
+        ingredient?: {
+          findMany?: () => Promise<Array<{ code: string; stock: number }>>;
+        };
+      };
+
+      const [product, ingList] = await Promise.all([
+        this.prisma.product.findUnique({
+          where: { id },
+        }),
+        typeof prismaWithIng?.ingredient?.findMany === 'function'
+          ? Promise.resolve(prismaWithIng.ingredient.findMany()).catch(() => null)
+          : Promise.resolve(null),
+      ]);
 
       if (!product) {
         throw new NotFoundException(`Không tìm thấy sản phẩm với ID: ${id}`);
@@ -183,24 +199,12 @@ export class ProductsService {
       let milkStock = ProductsService.getInMemoryIngredientStock('MILK');
       let isDbIngredientsAvailable = false;
 
-      try {
-        const prismaWithIng = this.prisma as unknown as {
-          ingredient?: {
-            findMany?: () => Promise<Array<{ code: string; stock: number }>>;
-          };
-        };
-        if (prismaWithIng?.ingredient?.findMany) {
-          const ingList = await prismaWithIng.ingredient.findMany();
-          if (Array.isArray(ingList) && ingList.length > 0) {
-            isDbIngredientsAvailable = true;
-            const ingMap = new Map(ingList.map((i) => [i.code, i.stock]));
-            if (ingMap.has('COFFEE_BEANS')) coffeeStock = ingMap.get('COFFEE_BEANS')!;
-            if (ingMap.has('TEA_LEAVES')) teaStock = ingMap.get('TEA_LEAVES')!;
-            if (ingMap.has('MILK')) milkStock = ingMap.get('MILK')!;
-          }
-        }
-      } catch {
-        // Fallback in-memory
+      if (Array.isArray(ingList) && ingList.length > 0) {
+        isDbIngredientsAvailable = true;
+        const ingMap = new Map(ingList.map((i) => [i.code, i.stock]));
+        if (ingMap.has('COFFEE_BEANS')) coffeeStock = ingMap.get('COFFEE_BEANS')!;
+        if (ingMap.has('TEA_LEAVES')) teaStock = ingMap.get('TEA_LEAVES')!;
+        if (ingMap.has('MILK')) milkStock = ingMap.get('MILK')!;
       }
 
       const computedCups = ProductsService.calculateProductStock(
@@ -214,20 +218,18 @@ export class ProductsService {
       const newStock = isDbIngredientsAvailable ? computedCups : (product.stock ?? computedCups);
       const newIsAvailable = product.isAvailable && computedCups > 0;
 
-      // Tự động đồng bộ ngược lại vào bảng products trong DB nếu có chênh lệch
+      // Tự động đồng bộ ngược lại vào bảng products trong DB (không chặn phản hồi NFR-01)
       if (
         typeof this.prisma.product?.update === 'function' &&
         isDbIngredientsAvailable &&
         (product.stock !== newStock || product.isAvailable !== newIsAvailable)
       ) {
-        try {
-          await this.prisma.product.update({
+        void Promise.resolve(
+          this.prisma.product.update({
             where: { id: product.id },
             data: { stock: newStock, isAvailable: newIsAvailable },
-          });
-        } catch {
-          // Bỏ qua lỗi
-        }
+          }),
+        ).catch(() => null);
       }
 
       return {
